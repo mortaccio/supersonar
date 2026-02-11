@@ -1,0 +1,14 @@
+[scan]
+exclude = [".git", ".venv", "venv", "build", "dist", "__pycache__"]
+include_extensions = [".py", ".java", ".js", ".ts", ".go", ".rs", ".cs", ".yaml", ".yml", ".json", ".toml"]
+include_filenames = ["Dockerfile", "Jenkinsfile", "Makefile"]
+max_file_size_kb = 1024
+
+[quality_gate]
+fail_on = "high"
+max_issues = 200
+max_high = 0
+max_critical = 0
+
+[report]
+format = "json"

@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "supersonar"
+version = "0.3.0"
+description = "A SonarQube-like static analysis CLI for Python projects."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Supersonar Contributors" }]
+license = "MIT"
+keywords = ["static-analysis", "lint", "security", "ci", "sonarqube"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Environment :: Console",
+]
+
+[project.scripts]
+supersonar = "supersonar.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["supersonar*"]
