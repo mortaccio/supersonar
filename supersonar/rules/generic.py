@@ -11,6 +11,8 @@ SECRET_PATTERN = re.compile(
     re.IGNORECASE,
 )
 EVAL_PATTERN = re.compile(r"\b(eval|Function)\s*\(", re.IGNORECASE)
+TODO_FIXME_PATTERN = re.compile(r"\b(TODO|FIXME)\b", re.IGNORECASE)
+PRIVATE_KEY_PATTERN = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----")
 
 
 class GenericRuleEngine:
@@ -21,12 +23,14 @@ class GenericRuleEngine:
         issues.extend(self._find_secrets(source, file_path))
         issues.extend(self._find_conflict_markers(source, file_path))
         issues.extend(self._find_dynamic_eval(source, file_path))
+        issues.extend(self._find_private_keys(source, file_path))
         return issues
 
     def _find_todo_fixme(self, source: str, file_path: Path) -> list[Issue]:
         issues: list[Issue] = []
         for idx, line in enumerate(source.splitlines(), start=1):
-            if "TODO" in line or "FIXME" in line:
+            match = TODO_FIXME_PATTERN.search(line)
+            if match:
                 issues.append(
                     Issue(
                         rule_id="SS004",
@@ -35,7 +39,7 @@ class GenericRuleEngine:
                         message="Found TODO/FIXME marker. Track and resolve before release.",
                         file_path=str(file_path),
                         line=idx,
-                        column=max(line.find("TODO"), line.find("FIXME"), 0) + 1,
+                        column=match.start() + 1,
                     )
                 )
         return issues
@@ -91,3 +95,19 @@ class GenericRuleEngine:
                 )
         return issues
 
+    def _find_private_keys(self, source: str, file_path: Path) -> list[Issue]:
+        issues: list[Issue] = []
+        for idx, line in enumerate(source.splitlines(), start=1):
+            if PRIVATE_KEY_PATTERN.search(line):
+                issues.append(
+                    Issue(
+                        rule_id="SS102",
+                        title="Private key material in source",
+                        severity="critical",
+                        message="Private key block marker detected. Remove secrets from source control.",
+                        file_path=str(file_path),
+                        line=idx,
+                        column=1,
+                    )
+                )
+        return issues

@@ -60,6 +60,7 @@ class ScanConfig:
 class QualityGateConfig:
     fail_on: Severity | None = None
     max_issues: int | None = None
+    max_files_with_issues: int | None = None
     max_low: int | None = None
     max_medium: int | None = None
     max_high: int | None = None
@@ -106,6 +107,7 @@ def load_config(path: str | None) -> Config:
     config.scan.max_file_size_kb = int(scan.get("max_file_size_kb", config.scan.max_file_size_kb))
     config.quality_gate.fail_on = quality_gate.get("fail_on")
     config.quality_gate.max_issues = quality_gate.get("max_issues")
+    config.quality_gate.max_files_with_issues = quality_gate.get("max_files_with_issues")
     config.quality_gate.max_low = quality_gate.get("max_low")
     config.quality_gate.max_medium = quality_gate.get("max_medium")
     config.quality_gate.max_high = quality_gate.get("max_high")

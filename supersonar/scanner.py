@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from supersonar.models import CoverageData, Issue, ScanResult
@@ -7,8 +8,7 @@ from supersonar.rules import GenericRuleEngine, PythonRuleEngine
 
 
 def _should_exclude(path: Path, excludes: list[str]) -> bool:
-    parts = set(path.parts)
-    return any(ex in parts for ex in excludes)
+    return any(ex in path.parts for ex in excludes)
 
 
 def _has_allowed_target(
@@ -42,15 +42,86 @@ def scan_path(
     include_ext_set = {ext.lower() if ext.startswith(".") else f".{ext.lower()}" for ext in include_extensions}
     include_name_set = set(include_filenames)
 
-    for file_path in root_path.rglob("*"):
-        if _should_exclude(file_path, excludes):
-            continue
+    if root_path.is_file():
+        file_candidates = [root_path]
+    else:
+        file_candidates = []
+
+    for file_path in file_candidates:
         if not _has_allowed_target(file_path, include_ext_set, include_name_set, max_file_size_kb):
             continue
         files_scanned += 1
-        if file_path.suffix.lower() == ".py":
-            issues.extend(python_engine.run(file_path))
-        else:
-            issues.extend(generic_engine.run(file_path))
+        try:
+            if file_path.suffix.lower() == ".py":
+                file_issues = python_engine.run(file_path)
+            else:
+                file_issues = generic_engine.run(file_path)
+        except OSError as exc:
+            issues.append(
+                Issue(
+                    rule_id="SS900",
+                    title="File scan error",
+                    severity="medium",
+                    message=f"Unable to read file during scan: {exc}",
+                    file_path=file_path.name,
+                    line=1,
+                    column=1,
+                )
+            )
+            file_issues = []
 
-    return ScanResult(issues=issues, files_scanned=files_scanned, coverage=coverage)
+        for issue in file_issues:
+            issue.file_path = file_path.name
+        issues.extend(file_issues)
+
+    for dirpath, dirnames, filenames in os.walk(root_path, topdown=True, followlinks=False):
+        dir_path = Path(dirpath)
+        dirnames[:] = sorted(name for name in dirnames if not _should_exclude(dir_path / name, excludes))
+        for filename in sorted(filenames):
+            file_path = dir_path / filename
+            if _should_exclude(file_path, excludes):
+                continue
+            if not _has_allowed_target(file_path, include_ext_set, include_name_set, max_file_size_kb):
+                continue
+            files_scanned += 1
+            try:
+                if file_path.suffix.lower() == ".py":
+                    file_issues = python_engine.run(file_path)
+                else:
+                    file_issues = generic_engine.run(file_path)
+            except OSError as exc:
+                relative = _relative_path(file_path, root_path)
+                issues.append(
+                    Issue(
+                        rule_id="SS900",
+                        title="File scan error",
+                        severity="medium",
+                        message=f"Unable to read file during scan: {exc}",
+                        file_path=relative,
+                        line=1,
+                        column=1,
+                    )
+                )
+                continue
+
+            for issue in file_issues:
+                issue.file_path = _relative_path(Path(issue.file_path), root_path)
+            issues.extend(file_issues)
+
+    deduped = _dedupe_issues(issues)
+    return ScanResult(issues=deduped, files_scanned=files_scanned, coverage=coverage)
+
+
+def _relative_path(path: Path, root: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(root))
+    except ValueError:
+        return str(path)
+
+
+def _dedupe_issues(issues: list[Issue]) -> list[Issue]:
+    unique: dict[tuple[str, str, int, int, str], Issue] = {}
+    for issue in issues:
+        key = (issue.file_path, issue.rule_id, issue.line, issue.column, issue.message)
+        unique[key] = issue
+    return sorted(unique.values(), key=lambda issue: (issue.file_path, issue.line, issue.column, issue.rule_id))

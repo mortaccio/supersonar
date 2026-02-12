@@ -28,6 +28,7 @@ class ScannerTests(unittest.TestCase):
 
             self.assertIn("SS001", rule_ids)
             self.assertEqual(result.files_scanned, 1)
+            self.assertTrue(all(not Path(issue.file_path).is_absolute() for issue in result.issues))
 
     def test_excludes_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -67,6 +68,18 @@ class ScannerTests(unittest.TestCase):
             rule_ids = {issue.rule_id for issue in result.issues}
 
             self.assertIn("SS005", rule_ids)
+            self.assertEqual(result.files_scanned, 1)
+
+    def test_scans_single_file_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            sample = root / "single.py"
+            sample.write_text("value = eval('2+2')\n", encoding="utf-8")
+
+            result = self._scan(str(sample), excludes=[])
+            rule_ids = {issue.rule_id for issue in result.issues}
+
+            self.assertIn("SS001", rule_ids)
             self.assertEqual(result.files_scanned, 1)
 
 

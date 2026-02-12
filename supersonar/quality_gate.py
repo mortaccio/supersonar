@@ -17,6 +17,7 @@ def evaluate_gate(
     result: ScanResult,
     fail_on: Severity | None = None,
     max_issues: int | None = None,
+    max_files_with_issues: int | None = None,
     max_low: int | None = None,
     max_medium: int | None = None,
     max_high: int | None = None,
@@ -33,6 +34,13 @@ def evaluate_gate(
 
     if max_issues is not None and len(result.issues) > max_issues:
         failed_reasons.append(f"Issue count {len(result.issues)} exceeds max_issues={max_issues}")
+
+    if max_files_with_issues is not None:
+        files_with_issues = len({issue.file_path for issue in result.issues})
+        if files_with_issues > max_files_with_issues:
+            failed_reasons.append(
+                f"Files with issues {files_with_issues} exceeds max_files_with_issues={max_files_with_issues}"
+            )
 
     per_severity_limits: dict[Severity, int | None] = {
         "low": max_low,

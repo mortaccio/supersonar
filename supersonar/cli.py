@@ -28,6 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--out", help="Write report to file. Defaults to stdout.")
     scan.add_argument("--fail-on", choices=["low", "medium", "high", "critical"], help="Fail on severity level.")
     scan.add_argument("--max-issues", type=int, help="Fail if issue count exceeds this number.")
+    scan.add_argument("--max-files-with-issues", type=int, help="Fail if affected file count exceeds this number.")
     scan.add_argument("--max-low", type=int, help="Maximum allowed low-severity issues.")
     scan.add_argument("--max-medium", type=int, help="Maximum allowed medium-severity issues.")
     scan.add_argument("--max-high", type=int, help="Maximum allowed high-severity issues.")
@@ -50,10 +51,11 @@ def main() -> None:
 def run_scan(args: argparse.Namespace) -> int:
     config = load_config(args.config)
     merged = merge_cli_with_config(args, config)
-    if merged.quality_gate.min_coverage is not None:
-        if merged.quality_gate.min_coverage < 0 or merged.quality_gate.min_coverage > 100:
-            print("[gate] min_coverage must be between 0 and 100", file=sys.stderr)
-            return 2
+    validation_errors = validate_quality_gate_config(merged)
+    if validation_errors:
+        for error in validation_errors:
+            print(f"[gate] {error}", file=sys.stderr)
+        return 2
 
     coverage = None
     if merged.scan.coverage_xml:
@@ -75,6 +77,7 @@ def run_scan(args: argparse.Namespace) -> int:
         result,
         fail_on=merged.quality_gate.fail_on,
         max_issues=merged.quality_gate.max_issues,
+        max_files_with_issues=merged.quality_gate.max_files_with_issues,
         max_low=merged.quality_gate.max_low,
         max_medium=merged.quality_gate.max_medium,
         max_high=merged.quality_gate.max_high,
@@ -108,6 +111,8 @@ def merge_cli_with_config(args: argparse.Namespace, config: Config) -> Config:
         merged.quality_gate.fail_on = args.fail_on
     if args.max_issues is not None:
         merged.quality_gate.max_issues = args.max_issues
+    if args.max_files_with_issues is not None:
+        merged.quality_gate.max_files_with_issues = args.max_files_with_issues
     if args.max_low is not None:
         merged.quality_gate.max_low = args.max_low
     if args.max_medium is not None:
@@ -139,6 +144,35 @@ def print_summary(result) -> None:
     if result.coverage is not None:
         line += f" coverage={result.coverage.line_rate * 100.0:.2f}%"
     print(line, file=sys.stderr)
+
+
+def validate_quality_gate_config(config: Config) -> list[str]:
+    errors: list[str] = []
+    if config.quality_gate.fail_on is not None and config.quality_gate.fail_on not in {
+        "low",
+        "medium",
+        "high",
+        "critical",
+    }:
+        errors.append("fail_on must be one of: low, medium, high, critical")
+
+    numeric_gate_values: list[tuple[str, int | None]] = [
+        ("max_issues", config.quality_gate.max_issues),
+        ("max_files_with_issues", config.quality_gate.max_files_with_issues),
+        ("max_low", config.quality_gate.max_low),
+        ("max_medium", config.quality_gate.max_medium),
+        ("max_high", config.quality_gate.max_high),
+        ("max_critical", config.quality_gate.max_critical),
+    ]
+    for gate_name, value in numeric_gate_values:
+        if value is not None and value < 0:
+            errors.append(f"{gate_name} must be >= 0")
+
+    if config.quality_gate.min_coverage is not None:
+        if config.quality_gate.min_coverage < 0 or config.quality_gate.min_coverage > 100:
+            errors.append("min_coverage must be between 0 and 100")
+
+    return errors
 
 
 if __name__ == "__main__":

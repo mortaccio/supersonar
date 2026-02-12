@@ -32,7 +32,10 @@ python -m pip install "git+https://github.com/mortaccio/supersonar.git@main"
 The scanner performs real code checks (AST + regex), including:
 - dynamic execution (`eval`/`exec`)
 - broad exception handlers
+- `subprocess.*(..., shell=True)` in Python
+- unsafe `yaml.load(...)` in Python
 - hardcoded secret-like assignments
+- private key block markers (for example `BEGIN ... PRIVATE KEY`)
 - TODO/FIXME markers
 - unresolved merge conflict markers
 
@@ -65,6 +68,7 @@ coverage_xml = "coverage.xml"
 [quality_gate]
 fail_on = "high"
 max_issues = 200
+max_files_with_issues = 25
 max_high = 0
 max_critical = 0
 min_coverage = 80.0
@@ -83,6 +87,7 @@ supersonar scan . --include-ext .java --include-ext .kt --include-file Dockerfil
 
 - `fail_on`: fail if any issue exists at/above severity
 - `max_issues`: fail if total issues exceed threshold
+- `max_files_with_issues`: fail if number of files with at least one issue exceeds threshold
 - `max_low`, `max_medium`, `max_high`, `max_critical`: per-severity caps
 - `min_coverage`: minimum line coverage percentage from Cobertura XML
 

@@ -11,6 +11,7 @@ SECRET_PATTERN = re.compile(
     r"(api[_-]?key|secret|token|password)\s*=\s*['\"][^'\"]{8,}['\"]",
     re.IGNORECASE,
 )
+TODO_FIXME_PATTERN = re.compile(r"\b(TODO|FIXME)\b", re.IGNORECASE)
 
 
 class PythonRuleEngine:
@@ -25,7 +26,8 @@ class PythonRuleEngine:
     def _find_todo_fixme(self, source: str, file_path: Path) -> list[Issue]:
         issues: list[Issue] = []
         for idx, line in enumerate(source.splitlines(), start=1):
-            if "TODO" in line or "FIXME" in line:
+            match = TODO_FIXME_PATTERN.search(line)
+            if match:
                 issues.append(
                     Issue(
                         rule_id="SS004",
@@ -34,7 +36,7 @@ class PythonRuleEngine:
                         message="Found TODO/FIXME marker. Track and resolve before release.",
                         file_path=str(file_path),
                         line=idx,
-                        column=max(line.find("TODO"), line.find("FIXME"), 0) + 1,
+                        column=match.start() + 1,
                     )
                 )
         return issues
@@ -90,8 +92,8 @@ class PythonRuleEngine:
                     )
             if isinstance(node, ast.ExceptHandler):
                 is_bare = node.type is None
-                is_exception = isinstance(node.type, ast.Name) and node.type.id == "Exception"
-                if is_bare or is_exception:
+                is_broad = _is_broad_except_type(node.type)
+                if is_bare or is_broad:
                     issues.append(
                         Issue(
                             rule_id="SS002",
@@ -103,5 +105,73 @@ class PythonRuleEngine:
                             column=getattr(node, "col_offset", 0) + 1,
                         )
                     )
+            if isinstance(node, ast.Call) and _is_subprocess_shell_true_call(node):
+                issues.append(
+                    Issue(
+                        rule_id="SS006",
+                        title="Shell execution with shell=True",
+                        severity="high",
+                        message="Avoid subprocess calls with shell=True; pass argument arrays instead.",
+                        file_path=str(file_path),
+                        line=getattr(node, "lineno", 1),
+                        column=getattr(node, "col_offset", 0) + 1,
+                    )
+                )
+            if isinstance(node, ast.Call) and _is_unsafe_yaml_load(node):
+                issues.append(
+                    Issue(
+                        rule_id="SS007",
+                        title="Unsafe YAML deserialization",
+                        severity="high",
+                        message="Use yaml.safe_load() or pass Loader=yaml.SafeLoader to yaml.load().",
+                        file_path=str(file_path),
+                        line=getattr(node, "lineno", 1),
+                        column=getattr(node, "col_offset", 0) + 1,
+                    )
+                )
         return issues
 
+
+def _is_subprocess_shell_true_call(node: ast.Call) -> bool:
+    if not isinstance(node.func, ast.Attribute):
+        return False
+    if not isinstance(node.func.value, ast.Name):
+        return False
+    if node.func.value.id != "subprocess":
+        return False
+    if node.func.attr not in {"run", "Popen", "call", "check_call", "check_output"}:
+        return False
+    for keyword in node.keywords:
+        if keyword.arg != "shell":
+            continue
+        return isinstance(keyword.value, ast.Constant) and keyword.value.value is True
+    return False
+
+
+def _is_unsafe_yaml_load(node: ast.Call) -> bool:
+    if not isinstance(node.func, ast.Attribute):
+        return False
+    if not isinstance(node.func.value, ast.Name):
+        return False
+    if node.func.value.id != "yaml" or node.func.attr != "load":
+        return False
+
+    for keyword in node.keywords:
+        if keyword.arg != "Loader":
+            continue
+        if isinstance(keyword.value, ast.Attribute) and isinstance(keyword.value.value, ast.Name):
+            if keyword.value.value.id == "yaml" and keyword.value.attr == "SafeLoader":
+                return False
+        return True
+
+    return True
+
+
+def _is_broad_except_type(node: ast.expr | None) -> bool:
+    if node is None:
+        return False
+    if isinstance(node, ast.Name):
+        return node.id in {"Exception", "BaseException"}
+    if isinstance(node, ast.Tuple):
+        return any(_is_broad_except_type(elt) for elt in node.elts)
+    return False

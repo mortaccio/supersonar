@@ -44,6 +44,18 @@ class QualityGateTests(unittest.TestCase):
         self.assertFalse(passed)
         self.assertTrue(any("max_high" in reason for reason in reasons))
 
+    def test_fails_on_files_with_issues_limit(self) -> None:
+        result = ScanResult(
+            issues=[
+                Issue("SS003", "t", "high", "m", "a.py", 1, 1),
+                Issue("SS004", "t", "low", "m", "b.py", 1, 1),
+            ],
+            files_scanned=2,
+        )
+        passed, reasons = evaluate_gate(result, max_files_with_issues=1)
+        self.assertFalse(passed)
+        self.assertTrue(any("max_files_with_issues" in reason for reason in reasons))
+
     def test_fails_when_coverage_below_threshold(self) -> None:
         result = ScanResult(issues=[], files_scanned=1, coverage=CoverageData(line_rate=0.69))
         passed, reasons = evaluate_gate(result, min_coverage=70.0)
