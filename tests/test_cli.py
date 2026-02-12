@@ -27,6 +27,13 @@ class CLITests(unittest.TestCase):
         errors = validate_quality_gate_config(config)
         self.assertTrue(any("fail_on" in error for error in errors))
 
+    def test_validates_gate_new_only_requires_baseline(self) -> None:
+        config = Config()
+        config.quality_gate.only_new_issues = True
+
+        errors = validate_quality_gate_config(config)
+        self.assertTrue(any("only_new_issues" in error for error in errors))
+
 
 if __name__ == "__main__":
     unittest.main()

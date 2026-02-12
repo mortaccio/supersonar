@@ -54,6 +54,10 @@ class ScanConfig:
     include_extensions: list[str] = field(default_factory=lambda: DEFAULT_INCLUDE_EXTENSIONS.copy())
     include_filenames: list[str] = field(default_factory=lambda: DEFAULT_INCLUDE_FILENAMES.copy())
     max_file_size_kb: int = 1024
+    skip_generated: bool = True
+    enabled_rules: list[str] | None = None
+    disabled_rules: list[str] = field(default_factory=list)
+    inline_ignore: bool = True
 
 
 @dataclass(slots=True)
@@ -66,6 +70,8 @@ class QualityGateConfig:
     max_high: int | None = None
     max_critical: int | None = None
     min_coverage: float | None = None
+    baseline_report: str | None = None
+    only_new_issues: bool = False
 
 
 @dataclass(slots=True)
@@ -105,6 +111,11 @@ def load_config(path: str | None) -> Config:
     config.scan.include_extensions = list(scan.get("include_extensions", config.scan.include_extensions))
     config.scan.include_filenames = list(scan.get("include_filenames", config.scan.include_filenames))
     config.scan.max_file_size_kb = int(scan.get("max_file_size_kb", config.scan.max_file_size_kb))
+    config.scan.skip_generated = bool(scan.get("skip_generated", config.scan.skip_generated))
+    enabled_rules = scan.get("enabled_rules")
+    config.scan.enabled_rules = [str(rule).upper() for rule in enabled_rules] if enabled_rules is not None else None
+    config.scan.disabled_rules = [str(rule).upper() for rule in scan.get("disabled_rules", config.scan.disabled_rules)]
+    config.scan.inline_ignore = bool(scan.get("inline_ignore", config.scan.inline_ignore))
     config.quality_gate.fail_on = quality_gate.get("fail_on")
     config.quality_gate.max_issues = quality_gate.get("max_issues")
     config.quality_gate.max_files_with_issues = quality_gate.get("max_files_with_issues")
@@ -113,6 +124,8 @@ def load_config(path: str | None) -> Config:
     config.quality_gate.max_high = quality_gate.get("max_high")
     config.quality_gate.max_critical = quality_gate.get("max_critical")
     config.quality_gate.min_coverage = quality_gate.get("min_coverage")
+    config.quality_gate.baseline_report = quality_gate.get("baseline_report")
+    config.quality_gate.only_new_issues = bool(quality_gate.get("only_new_issues", config.quality_gate.only_new_issues))
     config.report.output_format = report.get("format", config.report.output_format)
     config.report.out = report.get("out")
     return config

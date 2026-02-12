@@ -8,13 +8,25 @@ from supersonar.scanner import scan_path
 
 
 class ScannerTests(unittest.TestCase):
-    def _scan(self, root: str, excludes: list[str]):
+    def _scan(
+        self,
+        root: str,
+        excludes: list[str],
+        skip_generated: bool = True,
+        enabled_rules: list[str] | None = None,
+        disabled_rules: list[str] | None = None,
+        inline_ignore: bool = True,
+    ):
         return scan_path(
             root,
             excludes=excludes,
             include_extensions=[".py", ".java", ".js", ".yml", ".yaml", ".md"],
             include_filenames=["Dockerfile"],
             max_file_size_kb=1024,
+            skip_generated=skip_generated,
+            enabled_rules=enabled_rules,
+            disabled_rules=disabled_rules,
+            inline_ignore=inline_ignore,
         )
 
     def test_detects_eval_issue(self) -> None:
@@ -81,6 +93,59 @@ class ScannerTests(unittest.TestCase):
 
             self.assertIn("SS001", rule_ids)
             self.assertEqual(result.files_scanned, 1)
+
+    def test_skips_generated_maven_target_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            gen_dir = root / "target"
+            gen_dir.mkdir()
+            (gen_dir / "generated.py").write_text("value = eval('2+2')\n", encoding="utf-8")
+
+            result = self._scan(str(root), excludes=[])
+            self.assertEqual(result.files_scanned, 0)
+            self.assertEqual(result.issues, [])
+
+    def test_can_include_generated_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            gen_dir = root / "target"
+            gen_dir.mkdir()
+            (gen_dir / "generated.py").write_text("value = eval('2+2')\n", encoding="utf-8")
+
+            result = self._scan(str(root), excludes=[], skip_generated=False)
+            rule_ids = {issue.rule_id for issue in result.issues}
+
+            self.assertEqual(result.files_scanned, 1)
+            self.assertIn("SS001", rule_ids)
+
+    def test_inline_ignore_comment_suppresses_issue(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            sample = root / "sample.py"
+            sample.write_text("value = eval('2+2')  # supersonar:ignore SS001\n", encoding="utf-8")
+
+            result = self._scan(str(root), excludes=[])
+            self.assertEqual(result.issues, [])
+
+    def test_disable_rule_filters_issues(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            sample = root / "sample.py"
+            sample.write_text("value = eval('2+2')\n", encoding="utf-8")
+
+            result = self._scan(str(root), excludes=[], disabled_rules=["SS001"])
+            self.assertEqual(result.issues, [])
+
+    def test_enable_rule_only_keeps_selected_rule(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            sample = root / "sample.py"
+            sample.write_text("# TODO fix\nvalue = eval('2+2')\n", encoding="utf-8")
+
+            result = self._scan(str(root), excludes=[], enabled_rules=["SS004"])
+            rule_ids = {issue.rule_id for issue in result.issues}
+
+            self.assertEqual(rule_ids, {"SS004"})
 
 
 if __name__ == "__main__":

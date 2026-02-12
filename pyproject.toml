@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "supersonar"
-version = "0.3.2"
+version = "0.3.3"
 description = "A SonarQube-like static analysis CLI for multi-language repositories."
 readme = "README.md"
 requires-python = ">=3.10"

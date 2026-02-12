@@ -63,6 +63,10 @@ exclude = [".git", ".venv", "venv", "build", "dist", "__pycache__"]
 include_extensions = [".py", ".java", ".js", ".ts", ".go", ".rs", ".cs", ".yaml", ".yml", ".json", ".toml"]
 include_filenames = ["Dockerfile", "Jenkinsfile", "Makefile"]
 max_file_size_kb = 1024
+skip_generated = true
+inline_ignore = true
+disabled_rules = []
+# enabled_rules = ["SS001", "SS003"]
 coverage_xml = "coverage.xml"
 
 [quality_gate]
@@ -72,6 +76,8 @@ max_files_with_issues = 25
 max_high = 0
 max_critical = 0
 min_coverage = 80.0
+baseline_report = "reports/supersonar-baseline.json"
+only_new_issues = true
 
 [report]
 format = "json"
@@ -90,6 +96,7 @@ supersonar scan . --include-ext .java --include-ext .kt --include-file Dockerfil
 - `max_files_with_issues`: fail if number of files with at least one issue exceeds threshold
 - `max_low`, `max_medium`, `max_high`, `max_critical`: per-severity caps
 - `min_coverage`: minimum line coverage percentage from Cobertura XML
+- `baseline_report` + `only_new_issues`: gate only on issues not present in a previous report
 
 Generate `coverage.xml` in Python projects with:
 
@@ -98,3 +105,14 @@ python -m pip install coverage
 coverage run -m pytest
 coverage xml -o coverage.xml
 ```
+
+## Noise control
+
+- Generated artifacts are skipped by default (`target/`, `.mypy_cache/`, `.pytest_cache/`, `.tox/`, `.nox/`, `.gradle/`, `node_modules/`, and common binary suffixes).
+- Use `--include-generated` when you explicitly want to scan generated/build outputs.
+- Inline suppression is supported per line:
+  - `# supersonar:ignore` ignores all rules on that line.
+  - `# supersonar:ignore SS001,SS007` ignores specific rules on that line.
+- Rule-level controls:
+  - `--disable-rule SS004` (repeatable)
+  - `--enable-rule SS001 --enable-rule SS003` (allowlist mode)

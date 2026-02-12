@@ -3,6 +3,9 @@ exclude = [".git", ".venv", "venv", "build", "dist", "__pycache__"]
 include_extensions = [".py", ".java", ".js", ".ts", ".go", ".rs", ".cs", ".yaml", ".yml", ".json", ".toml"]
 include_filenames = ["Dockerfile", "Jenkinsfile", "Makefile"]
 max_file_size_kb = 1024
+skip_generated = true
+inline_ignore = true
+disabled_rules = []
 
 [quality_gate]
 fail_on = "high"
@@ -10,6 +13,8 @@ max_issues = 200
 max_files_with_issues = 25
 max_high = 0
 max_critical = 0
+# baseline_report = "reports/supersonar-baseline.json"
+# only_new_issues = true
 
 [report]
 format = "json"
