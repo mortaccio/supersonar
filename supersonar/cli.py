@@ -4,6 +4,7 @@ import argparse
 from collections import Counter
 import sys
 
+from supersonar import __version__
 from supersonar.config import Config, load_config
 from supersonar.coverage import read_coverage_xml
 from supersonar.quality_gate import evaluate_gate
@@ -13,6 +14,7 @@ from supersonar.scanner import scan_path
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="supersonar", description="Universal static analysis scanner.")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     scan = subparsers.add_parser("scan", help="Run static analysis scan.")

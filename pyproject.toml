@@ -4,10 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "supersonar"
-version = "0.3.0"
-description = "A SonarQube-like static analysis CLI for Python projects."
+version = "0.3.1"
+description = "A SonarQube-like static analysis CLI for multi-language repositories."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
+dependencies = [
+  "tomli>=2.0.1; python_version < '3.11'",
+]
 authors = [{ name = "Supersonar Contributors" }]
 license = "MIT"
 keywords = ["static-analysis", "lint", "security", "ci", "sonarqube"]
@@ -16,6 +19,11 @@ classifiers = [
   "Programming Language :: Python :: 3 :: Only",
   "Environment :: Console",
 ]
+
+[project.urls]
+Homepage = "https://github.com/mortaccio/supersonar"
+Repository = "https://github.com/mortaccio/supersonar"
+Issues = "https://github.com/mortaccio/supersonar/issues"
 
 [project.scripts]
 supersonar = "supersonar.cli:main"

@@ -1,13 +1,32 @@
 # supersonar
 
 `supersonar` is a lightweight, SonarQube-inspired static analysis CLI for multi-language repositories.
-It is designed for local use and CI pipelines via `pip install`.
+It is designed for local use and CI pipelines via `pip install` (Python 3.10+).
 
 ## Quick start
 
 ```bash
 pip install .
 supersonar scan . --format json
+```
+
+## Pipeline install (pip)
+
+Use an isolated environment in CI:
+
+```bash
+python -m venv .venv
+. .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install supersonar
+supersonar --version
+supersonar scan . --format sarif --out reports/supersonar.sarif
+```
+
+Or install from repository source directly:
+
+```bash
+python -m pip install "git+https://github.com/mortaccio/supersonar.git@main"
 ```
 
 The scanner performs real code checks (AST + regex), including:
