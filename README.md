@@ -3,6 +3,13 @@
 `supersonar` is a lightweight, SonarQube-inspired static analysis CLI for multi-language repositories.
 It is designed for local use and CI pipelines via `pip install` (Python 3.10+).
 
+## Supported Languages
+
+- Python
+- Java
+- JavaScript / React (`.js`, `.jsx`, `.ts`, `.tsx`)
+- Go
+
 ## Quick start
 
 ```bash
@@ -34,6 +41,20 @@ The scanner performs real code checks (AST + regex), including:
 - broad exception handlers
 - `subprocess.*(..., shell=True)` in Python
 - unsafe `yaml.load(...)` in Python
+- cross-language readability checks (line too long, trailing whitespace, oversized file)
+- duplicate-code block detection (repeated multi-line chunks)
+- Java package naming convention checks (`lower.case.package`)
+- Java type naming convention checks (`UpperCamelCase`)
+- Java class/file naming consistency checks (`MyClass` in `MyClass.java`)
+- Java method naming convention checks (`lowerCamelCase`)
+- Java constant naming convention checks (`UPPER_SNAKE_CASE`)
+- Java complexity checks (too many method parameters, very long methods, deep nesting)
+- Java coupling/cohesion checks (high import fan-out, classes with too many methods, low cohesion)
+- Python naming checks (snake_case functions, UpperCamelCase classes)
+- Python complexity checks (too many parameters, very long functions, deep nesting)
+- Python coupling/cohesion checks (high import fan-out, classes with too many methods, low cohesion)
+- JavaScript/React checks (function/component naming, too many parameters, long functions, deep nesting)
+- Go checks (package/function naming, too many parameters, long functions, deep nesting, import fan-out)
 - hardcoded secret-like assignments
 - private key block markers (for example `BEGIN ... PRIVATE KEY`)
 - TODO/FIXME markers
@@ -60,7 +81,7 @@ supersonar scan . \
 ```toml
 [scan]
 exclude = [".git", ".venv", "venv", "build", "dist", "__pycache__"]
-include_extensions = [".py", ".java", ".js", ".ts", ".go", ".rs", ".cs", ".yaml", ".yml", ".json", ".toml"]
+include_extensions = [".py", ".java", ".js", ".jsx", ".ts", ".tsx", ".go", ".rs", ".cs", ".yaml", ".yml", ".json", ".toml"]
 include_filenames = ["Dockerfile", "Jenkinsfile", "Makefile"]
 max_file_size_kb = 1024
 skip_generated = true

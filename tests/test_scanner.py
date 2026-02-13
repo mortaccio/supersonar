@@ -20,7 +20,7 @@ class ScannerTests(unittest.TestCase):
         return scan_path(
             root,
             excludes=excludes,
-            include_extensions=[".py", ".java", ".js", ".yml", ".yaml", ".md"],
+            include_extensions=[".py", ".java", ".js", ".jsx", ".go", ".yml", ".yaml", ".md"],
             include_filenames=["Dockerfile"],
             max_file_size_kb=1024,
             skip_generated=skip_generated,
@@ -58,16 +58,51 @@ class ScannerTests(unittest.TestCase):
             self.assertNotIn("SS001", rule_ids)
             self.assertEqual(result.files_scanned, 1)
 
-    def test_scans_non_python_files(self) -> None:
+    def test_scans_java_with_java_specific_rules(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             java_file = root / "App.java"
-            java_file.write_text("// TODO review this class\n", encoding="utf-8")
+            java_file.write_text(
+                """package com.Example.Bad;
+public class app {
+    public static final int badConstant = 1;
+    public void DoWork() {}
+}
+""",
+                encoding="utf-8",
+            )
 
             result = self._scan(str(root), excludes=[])
             rule_ids = {issue.rule_id for issue in result.issues}
 
-            self.assertIn("SS004", rule_ids)
+            self.assertIn("SS201", rule_ids)
+            self.assertIn("SS202", rule_ids)
+            self.assertIn("SS204", rule_ids)
+            self.assertIn("SS205", rule_ids)
+            self.assertEqual(result.files_scanned, 1)
+
+    def test_scans_javascript_with_js_specific_rules(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            js_file = root / "App.jsx"
+            js_file.write_text("const home = () => <div>Home</div>;\n", encoding="utf-8")
+
+            result = self._scan(str(root), excludes=[])
+            rule_ids = {issue.rule_id for issue in result.issues}
+
+            self.assertIn("SS302", rule_ids)
+            self.assertEqual(result.files_scanned, 1)
+
+    def test_scans_go_with_go_specific_rules(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            go_file = root / "main.go"
+            go_file.write_text("package My_Pkg\n", encoding="utf-8")
+
+            result = self._scan(str(root), excludes=[])
+            rule_ids = {issue.rule_id for issue in result.issues}
+
+            self.assertIn("SS401", rule_ids)
             self.assertEqual(result.files_scanned, 1)
 
     def test_scans_special_filenames_without_extension(self) -> None:

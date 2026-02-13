@@ -22,8 +22,11 @@ def _issue_to_dict(issue: Issue) -> dict[str, Any]:
 
 def to_json_report(result: ScanResult) -> dict[str, Any]:
     counts = Counter(issue.severity for issue in result.issues)
+    rule_counts = Counter(issue.rule_id for issue in result.issues)
+    files_with_issues = len({issue.file_path for issue in result.issues})
     payload = {
         "files_scanned": result.files_scanned,
+        "files_with_issues": files_with_issues,
         "issues_total": len(result.issues),
         "severity_counts": {
             "low": counts.get("low", 0),
@@ -31,6 +34,7 @@ def to_json_report(result: ScanResult) -> dict[str, Any]:
             "high": counts.get("high", 0),
             "critical": counts.get("critical", 0),
         },
+        "rule_counts": dict(sorted(rule_counts.items())),
         "issues": [_issue_to_dict(issue) for issue in result.issues],
     }
     if result.coverage is not None:

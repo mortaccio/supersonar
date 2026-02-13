@@ -2,6 +2,9 @@
 .venv/
 venv/
 env/
+.env/
+.env.*
+!.env.example
 
 # Python cache/bytecode
 __pycache__/
@@ -20,17 +23,28 @@ htmlcov/
 # Build and packaging artifacts
 build/
 dist/
+release_dist/
 *.egg-info/
 .eggs/
 *.whl
 *.tar.gz
 pip-wheel-metadata/
+site/
 
 # Local runtime outputs
 reports/
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+*.swo
 
 # Editor/OS noise
 .DS_Store
 Thumbs.db
 .idea/
 .vscode/
+*.iml

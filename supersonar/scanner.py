@@ -5,7 +5,7 @@ from pathlib import Path
 import re
 
 from supersonar.models import CoverageData, Issue, ScanResult
-from supersonar.rules import GenericRuleEngine, PythonRuleEngine
+from supersonar.rules import GoRuleEngine, GenericRuleEngine, JavaRuleEngine, JavaScriptRuleEngine, PythonRuleEngine
 
 INLINE_IGNORE_PATTERN = re.compile(r"supersonar:ignore(?:\s+([A-Za-z0-9_, -]+))?", re.IGNORECASE)
 GENERATED_DIR_NAMES = {
@@ -65,6 +65,9 @@ def scan_path(
 ) -> ScanResult:
     root_path = Path(root).resolve()
     python_engine = PythonRuleEngine()
+    java_engine = JavaRuleEngine()
+    javascript_engine = JavaScriptRuleEngine()
+    go_engine = GoRuleEngine()
     generic_engine = GenericRuleEngine()
     issues: list[Issue] = []
     files_scanned = 0
@@ -86,8 +89,15 @@ def scan_path(
             continue
         files_scanned += 1
         try:
-            if file_path.suffix.lower() == ".py":
+            suffix = file_path.suffix.lower()
+            if suffix == ".py":
                 file_issues = python_engine.run(file_path)
+            elif suffix == ".java":
+                file_issues = java_engine.run(file_path)
+            elif suffix in {".js", ".jsx", ".ts", ".tsx"}:
+                file_issues = javascript_engine.run(file_path)
+            elif suffix == ".go":
+                file_issues = go_engine.run(file_path)
             else:
                 file_issues = generic_engine.run(file_path)
         except OSError as exc:
@@ -133,8 +143,15 @@ def scan_path(
                 continue
             files_scanned += 1
             try:
-                if file_path.suffix.lower() == ".py":
+                suffix = file_path.suffix.lower()
+                if suffix == ".py":
                     file_issues = python_engine.run(file_path)
+                elif suffix == ".java":
+                    file_issues = java_engine.run(file_path)
+                elif suffix in {".js", ".jsx", ".ts", ".tsx"}:
+                    file_issues = javascript_engine.run(file_path)
+                elif suffix == ".go":
+                    file_issues = go_engine.run(file_path)
                 else:
                     file_issues = generic_engine.run(file_path)
             except OSError as exc:
