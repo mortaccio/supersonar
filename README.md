@@ -1,7 +1,13 @@
 # supersonar
 
-`supersonar` is a lightweight, SonarQube-inspired static analysis CLI for multi-language repositories.
+`supersonar` is a lightweight, static analysis CLI for multi-language repositories.
 It is designed for local use and CI pipelines via `pip install` (Python 3.10+).
+
+## Project Description
+
+`supersonar` is a production-focused static analysis CLI for mixed repositories (backend, frontend, and infrastructure).
+It scans source code and deployment artifacts (including Dockerfile and Kubernetes manifests), produces JSON/SARIF reports,
+and can enforce security quality gates in CI/CD before deployment.
 
 ## Supported Languages
 
