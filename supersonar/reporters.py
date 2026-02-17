@@ -105,8 +105,52 @@ def to_sarif_report(result: ScanResult) -> dict[str, Any]:
     }
 
 
-def write_report(payload: dict[str, Any], out: str | None) -> None:
-    rendered = json.dumps(payload, indent=2)
+def to_pretty_report(result: ScanResult) -> str:
+    counts = Counter(issue.severity for issue in result.issues)
+    lines: list[str] = []
+    lines.append("SUPERSONAR PRETTY REPORT")
+    lines.append(
+        "Summary: "
+        f"files={result.files_scanned} issues={len(result.issues)} "
+        f"low={counts.get('low', 0)} medium={counts.get('medium', 0)} "
+        f"high={counts.get('high', 0)} critical={counts.get('critical', 0)}"
+    )
+
+    security_issues = [issue for issue in result.issues if issue.rule_id in SECURITY_RULE_IDS]
+    security_counts = Counter(issue.severity for issue in security_issues)
+    lines.append(
+        "Security: "
+        f"issues={len(security_issues)} low={security_counts.get('low', 0)} "
+        f"medium={security_counts.get('medium', 0)} high={security_counts.get('high', 0)} "
+        f"critical={security_counts.get('critical', 0)}"
+    )
+
+    if result.coverage is not None:
+        lines.append(f"Coverage: {result.coverage.line_rate * 100.0:.2f}%")
+
+    by_file: dict[str, list[Issue]] = {}
+    for issue in result.issues:
+        by_file.setdefault(issue.file_path, []).append(issue)
+
+    for file_path in sorted(by_file):
+        file_issues = sorted(by_file[file_path], key=lambda i: (i.line, i.column, i.rule_id))
+        per_severity = Counter(issue.severity for issue in file_issues)
+        lines.append(
+            f"\nFILE {file_path} (total={len(file_issues)} "
+            f"c={per_severity.get('critical', 0)} h={per_severity.get('high', 0)} "
+            f"m={per_severity.get('medium', 0)} l={per_severity.get('low', 0)})"
+        )
+        for issue in file_issues:
+            lines.append(
+                f"  - [{issue.severity.upper()}] {issue.rule_id} "
+                f"{issue.line}:{issue.column} {issue.title} :: {issue.message}"
+            )
+
+    return "\n".join(lines)
+
+
+def write_report(payload: dict[str, Any] | str, out: str | None) -> None:
+    rendered = payload if isinstance(payload, str) else json.dumps(payload, indent=2)
     if out is None:
         print(rendered)
         return

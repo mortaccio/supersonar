@@ -41,6 +41,12 @@ class CLITests(unittest.TestCase):
         merged = merge_cli_with_config(args, Config())
         self.assertTrue(merged.scan.security_only)
 
+    def test_pretty_flag_sets_pretty_output_format(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["scan", ".", "--pretty"])
+        merged = merge_cli_with_config(args, Config())
+        self.assertEqual(merged.report.output_format, "pretty")
+
     def test_security_only_filters_enabled_rules(self) -> None:
         resolved = resolve_enabled_rules(["SS004", "SS001", "SS007"], security_only=True)
         self.assertEqual(resolved, ["SS001", "SS007"])

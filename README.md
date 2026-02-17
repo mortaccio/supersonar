@@ -22,6 +22,7 @@ and can enforce security quality gates in CI/CD before deployment.
 ```bash
 pip install .
 supersonar scan . --format json
+supersonar scan . --pretty
 ```
 
 ## Pipeline install (pip)
@@ -127,6 +128,7 @@ Use CLI overrides when needed:
 ```bash
 supersonar scan . --include-ext .java --include-ext .kt --include-file Dockerfile
 supersonar scan . --security-only
+supersonar scan . --pretty
 supersonar scan . --security-only --format json --out reports/security-report.json
 ```
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 from supersonar.models import Issue, ScanResult
-from supersonar.reporters import to_json_report
+from supersonar.reporters import to_json_report, to_pretty_report
 
 
 class ReporterTests(unittest.TestCase):
@@ -47,6 +47,24 @@ class ReporterTests(unittest.TestCase):
         self.assertEqual(summary["language_counts"]["python"], 1)
         self.assertEqual(summary["language_counts"]["dockerfile"], 1)
         self.assertEqual(summary["language_counts"]["yaml"], 1)
+
+    def test_pretty_report_groups_issues_by_file(self) -> None:
+        result = ScanResult(
+            files_scanned=2,
+            issues=[
+                Issue("SS001", "Dangerous dynamic execution", "critical", "Avoid eval", "a.py", 3, 5),
+                Issue("SS004", "Work item marker in source", "low", "Found TODO", "a.py", 9, 2),
+                Issue("SS110", "Piped remote script execution in Dockerfile", "high", "Avoid curl | sh", "Dockerfile", 2, 1),
+            ],
+        )
+
+        rendered = to_pretty_report(result)
+        self.assertIn("Summary:", rendered)
+        self.assertIn("Security:", rendered)
+        self.assertIn("FILE a.py", rendered)
+        self.assertIn("FILE Dockerfile", rendered)
+        self.assertIn("[CRITICAL] SS001", rendered)
+        self.assertIn("[HIGH] SS110", rendered)
 
 
 if __name__ == "__main__":

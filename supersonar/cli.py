@@ -9,13 +9,14 @@ from supersonar.baseline import filter_new_issues, load_baseline_fingerprints
 from supersonar.config import Config, load_config
 from supersonar.coverage import read_coverage_xml
 from supersonar.quality_gate import evaluate_gate
-from supersonar.reporters import to_json_report, to_sarif_report, write_report
+from supersonar.reporters import to_json_report, to_pretty_report, to_sarif_report, write_report
 from supersonar.scanner import scan_path
 from supersonar.security import resolve_enabled_rules
 
 TOP_LEVEL_MANUAL = """\
 Quick start:
   supersonar scan .
+  supersonar scan . --pretty
   supersonar scan . --format json --out reports/supersonar.json
   supersonar scan . --format sarif --out reports/supersonar.sarif
 
@@ -78,7 +79,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Include generated/build artifacts (disabled by default).",
     )
     scan.add_argument("--max-file-size-kb", type=int, help="Skip files larger than this size in KB.")
-    scan.add_argument("--format", choices=["json", "sarif"], help="Report output format.")
+    scan.add_argument("--format", choices=["json", "sarif", "pretty"], help="Report output format.")
+    scan.add_argument("--pretty", action="store_true", help="Shortcut for --format pretty.")
     scan.add_argument("--out", help="Write report to file. Defaults to stdout.")
     scan.add_argument("--fail-on", choices=["low", "medium", "high", "critical"], help="Fail on severity level.")
     scan.add_argument("--max-issues", type=int, help="Fail if issue count exceeds this number.")
@@ -195,6 +197,8 @@ def merge_cli_with_config(args: argparse.Namespace, config: Config) -> Config:
         merged.scan.coverage_xml = args.coverage_xml
     if args.format:
         merged.report.output_format = args.format
+    if args.pretty:
+        merged.report.output_format = "pretty"
     if args.out:
         merged.report.out = args.out
     if args.fail_on:
@@ -225,6 +229,8 @@ def render_report(result, output_format: str):
         return to_sarif_report(result)
     if output_format == "json":
         return to_json_report(result)
+    if output_format == "pretty":
+        return to_pretty_report(result)
     raise ValueError(f"Unsupported report format: {output_format}")
 
 
