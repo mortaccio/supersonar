@@ -56,6 +56,13 @@ class CLITests(unittest.TestCase):
         self.assertIn("SS108", resolved)
         self.assertIn("SS111", resolved)
 
+    def test_top_level_help_contains_manual(self) -> None:
+        parser = build_parser()
+        help_text = parser.format_help()
+        self.assertIn("Security scanning (backend + frontend + infra):", help_text)
+        self.assertIn("supersonar scan . --security-only", help_text)
+        self.assertIn("supersonar scan -h", help_text)
+
 
 if __name__ == "__main__":
     unittest.main()

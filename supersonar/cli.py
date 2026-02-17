@@ -13,9 +13,48 @@ from supersonar.reporters import to_json_report, to_sarif_report, write_report
 from supersonar.scanner import scan_path
 from supersonar.security import resolve_enabled_rules
 
+TOP_LEVEL_MANUAL = """\
+Quick start:
+  supersonar scan .
+  supersonar scan . --format json --out reports/supersonar.json
+  supersonar scan . --format sarif --out reports/supersonar.sarif
+
+Security scanning (backend + frontend + infra):
+  supersonar scan . --security-only
+  supersonar scan . --security-only --format json --out reports/security-report.json
+
+CI/CD quality gates:
+  supersonar scan . --security-only --max-high 0 --max-critical 0
+  supersonar scan . --fail-on high --max-high 0 --max-critical 0
+
+Coverage and baseline:
+  supersonar scan . --coverage-xml coverage.xml --min-coverage 80
+  supersonar scan . --baseline-report reports/previous.json --gate-new-only
+
+Rule controls:
+  supersonar scan . --enable-rule SS001 --enable-rule SS007
+  supersonar scan . --disable-rule SS004
+
+Targeting scope:
+  supersonar scan . --exclude node_modules --exclude dist
+  supersonar scan . --include-ext .java --include-ext .kt --include-file Dockerfile
+  supersonar scan . --include-generated
+
+Config file:
+  supersonar scan . --config supersonar.toml
+
+Need full scan flags?
+  supersonar scan -h
+"""
+
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="supersonar", description="Universal static analysis scanner.")
+    parser = argparse.ArgumentParser(
+        prog="supersonar",
+        description="Universal static analysis scanner.",
+        epilog=TOP_LEVEL_MANUAL,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
