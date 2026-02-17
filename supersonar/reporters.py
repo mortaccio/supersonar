@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from supersonar.models import Issue, ScanResult
+from supersonar.security import SECURITY_RULE_IDS
 
 
 def _issue_to_dict(issue: Issue) -> dict[str, Any]:
@@ -24,6 +25,11 @@ def to_json_report(result: ScanResult) -> dict[str, Any]:
     counts = Counter(issue.severity for issue in result.issues)
     rule_counts = Counter(issue.rule_id for issue in result.issues)
     files_with_issues = len({issue.file_path for issue in result.issues})
+    security_issues = [issue for issue in result.issues if issue.rule_id in SECURITY_RULE_IDS]
+    security_counts = Counter(issue.severity for issue in security_issues)
+    security_rule_counts = Counter(issue.rule_id for issue in security_issues)
+    security_file_counts = Counter(issue.file_path for issue in security_issues)
+    security_lang_counts = Counter(_detect_language(issue.file_path) for issue in security_issues)
     payload = {
         "files_scanned": result.files_scanned,
         "files_with_issues": files_with_issues,
@@ -35,6 +41,25 @@ def to_json_report(result: ScanResult) -> dict[str, Any]:
             "critical": counts.get("critical", 0),
         },
         "rule_counts": dict(sorted(rule_counts.items())),
+        "security_summary": {
+            "issues_total": len(security_issues),
+            "files_with_issues": len(security_file_counts),
+            "severity_counts": {
+                "low": security_counts.get("low", 0),
+                "medium": security_counts.get("medium", 0),
+                "high": security_counts.get("high", 0),
+                "critical": security_counts.get("critical", 0),
+            },
+            "rule_counts": dict(sorted(security_rule_counts.items())),
+            "language_counts": dict(sorted(security_lang_counts.items())),
+            "top_files": [
+                {"file_path": path, "issues": issue_count}
+                for path, issue_count in sorted(
+                    security_file_counts.items(),
+                    key=lambda item: (-item[1], item[0]),
+                )[:10]
+            ],
+        },
         "issues": [_issue_to_dict(issue) for issue in result.issues],
     }
     if result.coverage is not None:
@@ -98,3 +123,22 @@ def _severity_to_level(severity: str) -> str:
         "critical": "error",
     }
     return mapping.get(severity, "warning")
+
+
+def _detect_language(file_path: str) -> str:
+    lower = file_path.lower()
+    if lower.endswith(".py"):
+        return "python"
+    if lower.endswith(".java"):
+        return "java"
+    if lower.endswith(".kt"):
+        return "kotlin"
+    if lower.endswith(".go"):
+        return "go"
+    if lower.endswith((".js", ".jsx", ".ts", ".tsx")):
+        return "javascript"
+    if lower.endswith((".yaml", ".yml")):
+        return "yaml"
+    if lower.endswith(".dockerfile") or lower.endswith("/dockerfile") or lower == "dockerfile":
+        return "dockerfile"
+    return "other"

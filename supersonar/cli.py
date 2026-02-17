@@ -11,6 +11,7 @@ from supersonar.coverage import read_coverage_xml
 from supersonar.quality_gate import evaluate_gate
 from supersonar.reporters import to_json_report, to_sarif_report, write_report
 from supersonar.scanner import scan_path
+from supersonar.security import resolve_enabled_rules
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -26,6 +27,11 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--include-file", action="append", default=[], help="Filename to include (repeatable).")
     scan.add_argument("--enable-rule", action="append", default=[], help="Only allow specific rule IDs.")
     scan.add_argument("--disable-rule", action="append", default=[], help="Disable specific rule IDs.")
+    scan.add_argument(
+        "--security-only",
+        action="store_true",
+        help="Enable only security-focused rules (reduces quality/style noise).",
+    )
     scan.add_argument("--no-inline-ignore", action="store_true", help="Disable inline suppression comments.")
     scan.add_argument(
         "--include-generated",
@@ -84,7 +90,7 @@ def run_scan(args: argparse.Namespace) -> int:
         max_file_size_kb=merged.scan.max_file_size_kb,
         coverage=coverage,
         skip_generated=merged.scan.skip_generated,
-        enabled_rules=merged.scan.enabled_rules,
+        enabled_rules=resolve_enabled_rules(merged.scan.enabled_rules, merged.scan.security_only),
         disabled_rules=merged.scan.disabled_rules,
         inline_ignore=merged.scan.inline_ignore,
     )
@@ -140,6 +146,8 @@ def merge_cli_with_config(args: argparse.Namespace, config: Config) -> Config:
         )
     if args.no_inline_ignore:
         merged.scan.inline_ignore = False
+    if args.security_only:
+        merged.scan.security_only = True
     if args.include_generated:
         merged.scan.skip_generated = False
     if args.max_file_size_kb is not None:

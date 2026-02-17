@@ -18,6 +18,8 @@ METHOD_PATTERN = re.compile(
     r"[\w<>\[\], ?]+?\s+([A-Za-z_]\w*)\s*\([^;]*\)\s*(?:\{|throws\b)"
 )
 CONSTANT_PATTERN = re.compile(r"\b(?:public\s+)?static\s+final\s+[\w<>\[\], ?]+\s+([A-Za-z_]\w*)\b")
+COMMAND_EXEC_PATTERN = re.compile(r"\bRuntime\s*\.\s*getRuntime\s*\(\s*\)\s*\.\s*exec\s*\(")
+PROCESS_BUILDER_PATTERN = re.compile(r"\bnew\s+ProcessBuilder\s*\(")
 MAX_METHOD_LINES = 60
 MAX_METHOD_PARAMS = 6
 MAX_NESTING_DEPTH = 4
@@ -39,6 +41,7 @@ class JavaRuleEngine:
         issues.extend(self._find_constant_naming(source, file_path))
         issues.extend(self._find_method_size_and_params(source, file_path))
         issues.extend(self._find_nesting_depth(source, file_path))
+        issues.extend(self._find_command_execution(source, file_path))
         issues.extend(self._find_structural_quality_issues(source, file_path))
         return issues
 
@@ -233,6 +236,23 @@ class JavaRuleEngine:
                 column=1,
             )
         ]
+
+    def _find_command_execution(self, source: str, file_path: Path) -> list[Issue]:
+        issues: list[Issue] = []
+        for idx, line in enumerate(source.splitlines(), start=1):
+            if COMMAND_EXEC_PATTERN.search(line) or PROCESS_BUILDER_PATTERN.search(line):
+                issues.append(
+                    Issue(
+                        rule_id="SS221",
+                        title="Java command execution usage",
+                        severity="high",
+                        message="Review OS command execution (Runtime.exec/ProcessBuilder) for injection risks.",
+                        file_path=str(file_path),
+                        line=idx,
+                        column=1,
+                    )
+                )
+        return issues
 
     def _find_structural_quality_issues(self, source: str, file_path: Path) -> list[Issue]:
         issues: list[Issue] = []

@@ -7,6 +7,7 @@ It is designed for local use and CI pipelines via `pip install` (Python 3.10+).
 
 - Python
 - Java
+- Kotlin
 - JavaScript / React (`.js`, `.jsx`, `.ts`, `.tsx`)
 - Go
 
@@ -41,6 +42,8 @@ The scanner performs real code checks (AST + regex), including:
 - broad exception handlers
 - `subprocess.*(..., shell=True)` in Python
 - unsafe `yaml.load(...)` in Python
+- unsafe `pickle.load/loads(...)` in Python
+- `requests(..., verify=False)` in Python
 - cross-language readability checks (line too long, trailing whitespace, oversized file)
 - duplicate-code block detection (repeated multi-line chunks)
 - Java package naming convention checks (`lower.case.package`)
@@ -50,12 +53,20 @@ The scanner performs real code checks (AST + regex), including:
 - Java constant naming convention checks (`UPPER_SNAKE_CASE`)
 - Java complexity checks (too many method parameters, very long methods, deep nesting)
 - Java coupling/cohesion checks (high import fan-out, classes with too many methods, low cohesion)
+- Java command execution usage (`Runtime.exec`, `ProcessBuilder`)
+- Kotlin checks (package/type/function naming, too many parameters, long functions, deep nesting)
+- Kotlin command execution usage (`Runtime.exec`, `ProcessBuilder`)
 - Python naming checks (snake_case functions, UpperCamelCase classes)
 - Python complexity checks (too many parameters, very long functions, deep nesting)
 - Python coupling/cohesion checks (high import fan-out, classes with too many methods, low cohesion)
 - JavaScript/React checks (function/component naming, too many parameters, long functions, deep nesting)
+- Node.js command execution usage (`child_process.exec/execSync`)
 - Go checks (package/function naming, too many parameters, long functions, deep nesting, import fan-out)
+- Go security checks (`InsecureSkipVerify: true`, `exec.Command("sh", "-c", ...)`)
 - hardcoded secret-like assignments
+- insecure external `http://` endpoint literals
+- Dockerfile hardening checks (root user, unpinned image tags, curl/wget piped to shell)
+- Kubernetes manifest checks (privileged containers, privilege escalation, root policies, host namespace sharing)
 - private key block markers (for example `BEGIN ... PRIVATE KEY`)
 - TODO/FIXME markers
 - unresolved merge conflict markers
@@ -86,6 +97,7 @@ include_filenames = ["Dockerfile", "Jenkinsfile", "Makefile"]
 max_file_size_kb = 1024
 skip_generated = true
 inline_ignore = true
+security_only = false
 disabled_rules = []
 # enabled_rules = ["SS001", "SS003"]
 coverage_xml = "coverage.xml"
@@ -108,6 +120,8 @@ Use CLI overrides when needed:
 
 ```bash
 supersonar scan . --include-ext .java --include-ext .kt --include-file Dockerfile
+supersonar scan . --security-only
+supersonar scan . --security-only --format json --out reports/security-report.json
 ```
 
 ## Quality gates

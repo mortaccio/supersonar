@@ -5,6 +5,7 @@ include_filenames = ["Dockerfile", "Jenkinsfile", "Makefile"]
 max_file_size_kb = 1024
 skip_generated = true
 inline_ignore = true
+security_only = false
 disabled_rules = []
 
 [quality_gate]

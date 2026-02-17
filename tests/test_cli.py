@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import unittest
 
-from supersonar.cli import build_parser, validate_quality_gate_config
+from supersonar.cli import build_parser, merge_cli_with_config, validate_quality_gate_config
 from supersonar.config import Config
+from supersonar.security import resolve_enabled_rules
 
 
 class CLITests(unittest.TestCase):
@@ -33,6 +34,27 @@ class CLITests(unittest.TestCase):
 
         errors = validate_quality_gate_config(config)
         self.assertTrue(any("only_new_issues" in error for error in errors))
+
+    def test_security_only_flag_enables_security_mode(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["scan", ".", "--security-only"])
+        merged = merge_cli_with_config(args, Config())
+        self.assertTrue(merged.scan.security_only)
+
+    def test_security_only_filters_enabled_rules(self) -> None:
+        resolved = resolve_enabled_rules(["SS004", "SS001", "SS007"], security_only=True)
+        self.assertEqual(resolved, ["SS001", "SS007"])
+
+    def test_security_only_default_rules_include_non_python_security(self) -> None:
+        resolved = resolve_enabled_rules(None, security_only=True)
+        self.assertIsNotNone(resolved)
+        assert resolved is not None
+        self.assertIn("SS221", resolved)
+        self.assertIn("SS306", resolved)
+        self.assertIn("SS407", resolved)
+        self.assertIn("SS507", resolved)
+        self.assertIn("SS108", resolved)
+        self.assertIn("SS111", resolved)
 
 
 if __name__ == "__main__":

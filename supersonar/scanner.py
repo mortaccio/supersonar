@@ -5,7 +5,7 @@ from pathlib import Path
 import re
 
 from supersonar.models import CoverageData, Issue, ScanResult
-from supersonar.rules import GoRuleEngine, GenericRuleEngine, JavaRuleEngine, JavaScriptRuleEngine, PythonRuleEngine
+from supersonar.rules import GoRuleEngine, GenericRuleEngine, JavaRuleEngine, JavaScriptRuleEngine, KotlinRuleEngine, PythonRuleEngine
 
 INLINE_IGNORE_PATTERN = re.compile(r"supersonar:ignore(?:\s+([A-Za-z0-9_, -]+))?", re.IGNORECASE)
 GENERATED_DIR_NAMES = {
@@ -66,6 +66,7 @@ def scan_path(
     root_path = Path(root).resolve()
     python_engine = PythonRuleEngine()
     java_engine = JavaRuleEngine()
+    kotlin_engine = KotlinRuleEngine()
     javascript_engine = JavaScriptRuleEngine()
     go_engine = GoRuleEngine()
     generic_engine = GenericRuleEngine()
@@ -94,6 +95,8 @@ def scan_path(
                 file_issues = python_engine.run(file_path)
             elif suffix == ".java":
                 file_issues = java_engine.run(file_path)
+            elif suffix == ".kt":
+                file_issues = kotlin_engine.run(file_path)
             elif suffix in {".js", ".jsx", ".ts", ".tsx"}:
                 file_issues = javascript_engine.run(file_path)
             elif suffix == ".go":
@@ -148,6 +151,8 @@ def scan_path(
                     file_issues = python_engine.run(file_path)
                 elif suffix == ".java":
                     file_issues = java_engine.run(file_path)
+                elif suffix == ".kt":
+                    file_issues = kotlin_engine.run(file_path)
                 elif suffix in {".js", ".jsx", ".ts", ".tsx"}:
                     file_issues = javascript_engine.run(file_path)
                 elif suffix == ".go":

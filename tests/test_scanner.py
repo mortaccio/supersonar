@@ -20,7 +20,7 @@ class ScannerTests(unittest.TestCase):
         return scan_path(
             root,
             excludes=excludes,
-            include_extensions=[".py", ".java", ".js", ".jsx", ".go", ".yml", ".yaml", ".md"],
+            include_extensions=[".py", ".java", ".kt", ".js", ".jsx", ".go", ".yml", ".yaml", ".md"],
             include_filenames=["Dockerfile"],
             max_file_size_kb=1024,
             skip_generated=skip_generated,
@@ -79,6 +79,30 @@ public class app {
             self.assertIn("SS202", rule_ids)
             self.assertIn("SS204", rule_ids)
             self.assertIn("SS205", rule_ids)
+            self.assertEqual(result.files_scanned, 1)
+
+    def test_scans_kotlin_with_kotlin_specific_rules(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            kt_file = root / "App.kt"
+            kt_file.write_text(
+                """package com.Example.Bad
+class bad_class {
+    fun BadName(a: Int, b: Int, c: Int, d: Int, e: Int, f: Int, g: Int): Int {
+        return 1
+    }
+}
+""",
+                encoding="utf-8",
+            )
+
+            result = self._scan(str(root), excludes=[])
+            rule_ids = {issue.rule_id for issue in result.issues}
+
+            self.assertIn("SS501", rule_ids)
+            self.assertIn("SS502", rule_ids)
+            self.assertIn("SS503", rule_ids)
+            self.assertIn("SS504", rule_ids)
             self.assertEqual(result.files_scanned, 1)
 
     def test_scans_javascript_with_js_specific_rules(self) -> None:

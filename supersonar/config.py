@@ -58,6 +58,7 @@ class ScanConfig:
     enabled_rules: list[str] | None = None
     disabled_rules: list[str] = field(default_factory=list)
     inline_ignore: bool = True
+    security_only: bool = False
 
 
 @dataclass(slots=True)
@@ -116,6 +117,7 @@ def load_config(path: str | None) -> Config:
     config.scan.enabled_rules = [str(rule).upper() for rule in enabled_rules] if enabled_rules is not None else None
     config.scan.disabled_rules = [str(rule).upper() for rule in scan.get("disabled_rules", config.scan.disabled_rules)]
     config.scan.inline_ignore = bool(scan.get("inline_ignore", config.scan.inline_ignore))
+    config.scan.security_only = bool(scan.get("security_only", config.scan.security_only))
     config.quality_gate.fail_on = quality_gate.get("fail_on")
     config.quality_gate.max_issues = quality_gate.get("max_issues")
     config.quality_gate.max_files_with_issues = quality_gate.get("max_files_with_issues")

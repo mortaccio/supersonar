@@ -8,6 +8,7 @@ from supersonar.rules.generic import GenericRuleEngine
 from supersonar.rules.go import GoRuleEngine
 from supersonar.rules.java import JavaRuleEngine
 from supersonar.rules.javascript import JavaScriptRuleEngine
+from supersonar.rules.kotlin import KotlinRuleEngine
 from supersonar.rules.python import PythonRuleEngine
 
 
@@ -70,6 +71,30 @@ value = yaml.load(data, Loader=yaml.SafeLoader)
         rule_ids = {issue.rule_id for issue in issues}
         self.assertNotIn("SS007", rule_ids)
 
+    def test_detects_unsafe_pickle_load(self) -> None:
+        code = """import pickle
+obj = pickle.loads(data)
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            sample = Path(tmp) / "sample.py"
+            sample.write_text(code, encoding="utf-8")
+            issues = PythonRuleEngine().run(sample)
+
+        rule_ids = {issue.rule_id for issue in issues}
+        self.assertIn("SS008", rule_ids)
+
+    def test_detects_requests_verify_false(self) -> None:
+        code = """import requests
+requests.get("https://example.com", verify=False)
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            sample = Path(tmp) / "sample.py"
+            sample.write_text(code, encoding="utf-8")
+            issues = PythonRuleEngine().run(sample)
+
+        rule_ids = {issue.rule_id for issue in issues}
+        self.assertIn("SS009", rule_ids)
+
     def test_syntax_error_emits_issue(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             sample = Path(tmp) / "bad.py"
@@ -87,6 +112,74 @@ value = yaml.load(data, Loader=yaml.SafeLoader)
 
         rule_ids = {issue.rule_id for issue in issues}
         self.assertIn("SS101", rule_ids)
+
+    def test_generic_engine_ignores_dynamic_eval_in_comments(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            sample = Path(tmp) / "app.js"
+            sample.write_text("// eval(userInput)\n", encoding="utf-8")
+            issues = GenericRuleEngine().run(sample)
+
+        rule_ids = {issue.rule_id for issue in issues}
+        self.assertNotIn("SS101", rule_ids)
+
+    def test_generic_engine_skips_dynamic_eval_for_markdown(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            sample = Path(tmp) / "README.md"
+            sample.write_text("do not do this: eval(userInput)\n", encoding="utf-8")
+            issues = GenericRuleEngine().run(sample)
+
+        rule_ids = {issue.rule_id for issue in issues}
+        self.assertNotIn("SS101", rule_ids)
+
+    def test_generic_engine_detects_insecure_http_url(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            sample = Path(tmp) / "app.js"
+            sample.write_text("const api = 'http://example.com/v1';\n", encoding="utf-8")
+            issues = GenericRuleEngine().run(sample)
+
+        rule_ids = {issue.rule_id for issue in issues}
+        self.assertIn("SS107", rule_ids)
+
+    def test_generic_engine_detects_dockerfile_security_issues(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            sample = Path(tmp) / "Dockerfile"
+            sample.write_text(
+                "FROM node\nRUN curl https://example.com/install.sh | sh\n",
+                encoding="utf-8",
+            )
+            issues = GenericRuleEngine().run(sample)
+
+        rule_ids = {issue.rule_id for issue in issues}
+        self.assertIn("SS108", rule_ids)
+        self.assertIn("SS109", rule_ids)
+        self.assertIn("SS110", rule_ids)
+
+    def test_generic_engine_detects_k8s_manifest_security_issues(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            sample = Path(tmp) / "deployment.yaml"
+            sample.write_text(
+                """apiVersion: apps/v1
+kind: Deployment
+spec:
+  template:
+    spec:
+      hostNetwork: true
+      containers:
+        - name: app
+          securityContext:
+            privileged: true
+            allowPrivilegeEscalation: true
+            runAsNonRoot: false
+""",
+                encoding="utf-8",
+            )
+            issues = GenericRuleEngine().run(sample)
+
+        rule_ids = {issue.rule_id for issue in issues}
+        self.assertIn("SS111", rule_ids)
+        self.assertIn("SS112", rule_ids)
+        self.assertIn("SS113", rule_ids)
+        self.assertIn("SS114", rule_ids)
 
     def test_generic_engine_detects_merge_markers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -197,6 +290,7 @@ class Massive:
 public class bad_class {
     public static final String apiToken = "x";
     public void DoWork() {}
+    public void run(String cmd) { Runtime.getRuntime().exec(cmd); }
 }
 """
         with tempfile.TemporaryDirectory() as tmp:
@@ -210,6 +304,7 @@ public class bad_class {
         self.assertIn("SS203", rule_ids)
         self.assertIn("SS204", rule_ids)
         self.assertIn("SS205", rule_ids)
+        self.assertIn("SS221", rule_ids)
 
     def test_java_engine_detects_complexity_smells(self) -> None:
         long_body = "\n".join("        sum += 1;" for _ in range(65))
@@ -297,6 +392,9 @@ function nested() {{
   }}
   return 0;
 }}
+
+const {{ exec }} = require("child_process");
+exec(userInput);
 """
         with tempfile.TemporaryDirectory() as tmp:
             sample = Path(tmp) / "app.jsx"
@@ -309,6 +407,7 @@ function nested() {{
         self.assertIn("SS303", rule_ids)
         self.assertIn("SS304", rule_ids)
         self.assertIn("SS305", rule_ids)
+        self.assertIn("SS306", rule_ids)
 
     def test_go_engine_detects_quality_smells(self) -> None:
         imports = "\n".join(f'"dep{i}"' for i in range(27))
@@ -348,6 +447,68 @@ func bad_name(a int, b int, c int, d int, e int, f int, g int) int {{
         self.assertIn("SS404", rule_ids)
         self.assertIn("SS405", rule_ids)
         self.assertIn("SS406", rule_ids)
+
+    def test_go_engine_detects_security_smells(self) -> None:
+        code = """package main
+
+import (
+    "crypto/tls"
+    "os/exec"
+)
+
+func run(input string) {
+    _ = &tls.Config{InsecureSkipVerify: true}
+    _ = exec.Command("sh", "-c", input)
+}
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            sample = Path(tmp) / "main.go"
+            sample.write_text(code, encoding="utf-8")
+            issues = GoRuleEngine().run(sample)
+
+        rule_ids = {issue.rule_id for issue in issues}
+        self.assertIn("SS407", rule_ids)
+        self.assertIn("SS408", rule_ids)
+
+    def test_kotlin_engine_detects_quality_smells(self) -> None:
+        long_body = "\n".join("        total += 1" for _ in range(65))
+        code = f"""package com.Example.Bad
+
+class bad_class {{
+    fun BadName(a: Int, b: Int, c: Int, d: Int, e: Int, f: Int, g: Int): Int {{
+        var total = 0
+{long_body}
+        if (true) {{
+            if (true) {{
+                if (true) {{
+                    if (true) {{
+                        if (true) {{
+                            total += 1
+                        }}
+                    }}
+                }}
+            }}
+        }}
+        return total
+    }}
+    fun run(cmd: String) {{
+        Runtime.getRuntime().exec(cmd)
+    }}
+}}
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            sample = Path(tmp) / "app.kt"
+            sample.write_text(code, encoding="utf-8")
+            issues = KotlinRuleEngine().run(sample)
+
+        rule_ids = {issue.rule_id for issue in issues}
+        self.assertIn("SS501", rule_ids)
+        self.assertIn("SS502", rule_ids)
+        self.assertIn("SS503", rule_ids)
+        self.assertIn("SS504", rule_ids)
+        self.assertIn("SS505", rule_ids)
+        self.assertIn("SS506", rule_ids)
+        self.assertIn("SS507", rule_ids)
 
 
 if __name__ == "__main__":

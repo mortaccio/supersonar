@@ -139,6 +139,30 @@ class PythonRuleEngine:
                         column=getattr(node, "col_offset", 0) + 1,
                     )
                 )
+            if isinstance(node, ast.Call) and _is_unsafe_pickle_load(node):
+                issues.append(
+                    Issue(
+                        rule_id="SS008",
+                        title="Unsafe pickle deserialization",
+                        severity="high",
+                        message="Avoid pickle.load()/loads() on untrusted data; use safer formats.",
+                        file_path=str(file_path),
+                        line=getattr(node, "lineno", 1),
+                        column=getattr(node, "col_offset", 0) + 1,
+                    )
+                )
+            if isinstance(node, ast.Call) and _is_requests_verify_false_call(node):
+                issues.append(
+                    Issue(
+                        rule_id="SS009",
+                        title="TLS certificate verification disabled",
+                        severity="high",
+                        message="requests call with verify=False disables TLS certificate validation.",
+                        file_path=str(file_path),
+                        line=getattr(node, "lineno", 1),
+                        column=getattr(node, "col_offset", 0) + 1,
+                    )
+                )
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 issues.extend(self._find_function_quality_issues(node, file_path))
             if isinstance(node, ast.ClassDef) and not UPPER_CAMEL_CASE_PATTERN.fullmatch(node.name):
@@ -341,6 +365,32 @@ def _is_broad_except_type(node: ast.expr | None) -> bool:
         return node.id in {"Exception", "BaseException"}
     if isinstance(node, ast.Tuple):
         return any(_is_broad_except_type(elt) for elt in node.elts)
+    return False
+
+
+def _is_unsafe_pickle_load(node: ast.Call) -> bool:
+    if not isinstance(node.func, ast.Attribute):
+        return False
+    if not isinstance(node.func.value, ast.Name):
+        return False
+    if node.func.value.id != "pickle":
+        return False
+    return node.func.attr in {"load", "loads"}
+
+
+def _is_requests_verify_false_call(node: ast.Call) -> bool:
+    if not isinstance(node.func, ast.Attribute):
+        return False
+    if not isinstance(node.func.value, ast.Name):
+        return False
+    if node.func.value.id != "requests":
+        return False
+    if node.func.attr not in {"get", "post", "put", "patch", "delete", "request", "head", "options"}:
+        return False
+    for keyword in node.keywords:
+        if keyword.arg != "verify":
+            continue
+        return isinstance(keyword.value, ast.Constant) and keyword.value.value is False
     return False
 
 

@@ -11,6 +11,7 @@ FUNCTION_DECL_PATTERN = re.compile(r"^\s*function\s+([A-Za-z_]\w*)\s*\(([^)]*)\)
 ARROW_DECL_PATTERN = re.compile(r"^\s*(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*\(([^)]*)\)\s*=>")
 CLASS_COMPONENT_PATTERN = re.compile(r"^\s*class\s+([A-Za-z_]\w*)\s+extends\s+(?:React\.)?Component\b")
 JSX_TAG_PATTERN = re.compile(r"<[A-Za-z][A-Za-z0-9]*")
+CHILD_PROCESS_EXEC_PATTERN = re.compile(r"\b(?:child_process\.)?exec(?:Sync)?\s*\(")
 MAX_FUNCTION_PARAMS = 6
 MAX_FUNCTION_LINES = 60
 MAX_NESTING_DEPTH = 4
@@ -26,6 +27,7 @@ class JavaScriptRuleEngine:
         issues.extend(self._find_naming_issues(source, file_path))
         issues.extend(self._find_function_size_and_params(source, file_path))
         issues.extend(self._find_nesting_depth(source, file_path))
+        issues.extend(self._find_command_execution(source, file_path))
         return issues
 
     def _find_naming_issues(self, source: str, file_path: Path) -> list[Issue]:
@@ -179,6 +181,26 @@ class JavaScriptRuleEngine:
                 column=1,
             )
         ]
+
+    def _find_command_execution(self, source: str, file_path: Path) -> list[Issue]:
+        issues: list[Issue] = []
+        for idx, line in enumerate(source.splitlines(), start=1):
+            stripped = line.strip()
+            if stripped.startswith("//"):
+                continue
+            if CHILD_PROCESS_EXEC_PATTERN.search(line):
+                issues.append(
+                    Issue(
+                        rule_id="SS306",
+                        title="Node.js command execution usage",
+                        severity="high",
+                        message="Review child_process exec/execSync usage for command injection risks.",
+                        file_path=str(file_path),
+                        line=idx,
+                        column=1,
+                    )
+                )
+        return issues
 
 
 def _split_params(params: str) -> list[str]:
