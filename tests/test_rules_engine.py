@@ -306,6 +306,19 @@ public class bad_class {
         self.assertIn("SS205", rule_ids)
         self.assertIn("SS221", rule_ids)
 
+    def test_java_engine_ignores_command_execution_in_comments(self) -> None:
+        code = """public class App {
+    // Runtime.getRuntime().exec(userInput);
+}
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            sample = Path(tmp) / "App.java"
+            sample.write_text(code, encoding="utf-8")
+            issues = JavaRuleEngine().run(sample)
+
+        rule_ids = {issue.rule_id for issue in issues}
+        self.assertNotIn("SS221", rule_ids)
+
     def test_java_engine_detects_complexity_smells(self) -> None:
         long_body = "\n".join("        sum += 1;" for _ in range(65))
         code = f"""public class App {{
@@ -409,6 +422,31 @@ exec(userInput);
         self.assertIn("SS305", rule_ids)
         self.assertIn("SS306", rule_ids)
 
+    def test_javascript_engine_does_not_flag_custom_exec_without_child_process(self) -> None:
+        code = """function run(cmd) {
+  return exec(cmd);
+}
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            sample = Path(tmp) / "app.js"
+            sample.write_text(code, encoding="utf-8")
+            issues = JavaScriptRuleEngine().run(sample)
+
+        rule_ids = {issue.rule_id for issue in issues}
+        self.assertNotIn("SS306", rule_ids)
+
+    def test_javascript_engine_detects_child_process_alias_import(self) -> None:
+        code = """import { exec as runCmd } from "child_process";
+runCmd(userInput);
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            sample = Path(tmp) / "app.js"
+            sample.write_text(code, encoding="utf-8")
+            issues = JavaScriptRuleEngine().run(sample)
+
+        rule_ids = {issue.rule_id for issue in issues}
+        self.assertIn("SS306", rule_ids)
+
     def test_go_engine_detects_quality_smells(self) -> None:
         imports = "\n".join(f'"dep{i}"' for i in range(27))
         long_body = "\n".join("    total++" for _ in range(65))
@@ -470,6 +508,23 @@ func run(input string) {
         self.assertIn("SS407", rule_ids)
         self.assertIn("SS408", rule_ids)
 
+    def test_go_engine_ignores_security_smells_in_comments(self) -> None:
+        code = """package main
+
+func run() {
+    // _ = &tls.Config{InsecureSkipVerify: true}
+    // _ = exec.Command("sh", "-c", input)
+}
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            sample = Path(tmp) / "main.go"
+            sample.write_text(code, encoding="utf-8")
+            issues = GoRuleEngine().run(sample)
+
+        rule_ids = {issue.rule_id for issue in issues}
+        self.assertNotIn("SS407", rule_ids)
+        self.assertNotIn("SS408", rule_ids)
+
     def test_kotlin_engine_detects_quality_smells(self) -> None:
         long_body = "\n".join("        total += 1" for _ in range(65))
         code = f"""package com.Example.Bad
@@ -509,6 +564,19 @@ class bad_class {{
         self.assertIn("SS505", rule_ids)
         self.assertIn("SS506", rule_ids)
         self.assertIn("SS507", rule_ids)
+
+    def test_kotlin_engine_ignores_command_execution_in_comments(self) -> None:
+        code = """class App {
+    // Runtime.getRuntime().exec(cmd)
+}
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            sample = Path(tmp) / "app.kt"
+            sample.write_text(code, encoding="utf-8")
+            issues = KotlinRuleEngine().run(sample)
+
+        rule_ids = {issue.rule_id for issue in issues}
+        self.assertNotIn("SS507", rule_ids)
 
 
 if __name__ == "__main__":

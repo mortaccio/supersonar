@@ -171,7 +171,10 @@ class KotlinRuleEngine:
     def _find_command_execution(self, source: str, file_path: Path) -> list[Issue]:
         issues: list[Issue] = []
         for idx, line in enumerate(source.splitlines(), start=1):
-            if KOTLIN_COMMAND_EXEC_PATTERN.search(line) or KOTLIN_PROCESS_BUILDER_PATTERN.search(line):
+            code = _strip_kotlin_line_comment(line).strip()
+            if not code:
+                continue
+            if KOTLIN_COMMAND_EXEC_PATTERN.search(code) or KOTLIN_PROCESS_BUILDER_PATTERN.search(code):
                 issues.append(
                     Issue(
                         rule_id="SS507",
@@ -192,3 +195,13 @@ def _is_upper_camel_case(name: str) -> bool:
 
 def _is_lower_camel_case(name: str) -> bool:
     return bool(re.fullmatch(r"[a-z][A-Za-z0-9]*", name))
+
+
+def _strip_kotlin_line_comment(line: str) -> str:
+    stripped = line.lstrip()
+    if stripped.startswith("//"):
+        return ""
+    idx = line.find("//")
+    if idx < 0:
+        return line
+    return line[:idx]

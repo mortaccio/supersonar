@@ -240,7 +240,10 @@ class JavaRuleEngine:
     def _find_command_execution(self, source: str, file_path: Path) -> list[Issue]:
         issues: list[Issue] = []
         for idx, line in enumerate(source.splitlines(), start=1):
-            if COMMAND_EXEC_PATTERN.search(line) or PROCESS_BUILDER_PATTERN.search(line):
+            code = _strip_slash_line_comment(line).strip()
+            if not code:
+                continue
+            if COMMAND_EXEC_PATTERN.search(code) or PROCESS_BUILDER_PATTERN.search(code):
                 issues.append(
                     Issue(
                         rule_id="SS221",
@@ -409,3 +412,13 @@ def _java_class_cohesion(lines: list[str], methods: list[tuple[int, int]]) -> fl
     if not scores:
         return None
     return sum(scores) / len(scores)
+
+
+def _strip_slash_line_comment(line: str) -> str:
+    stripped = line.lstrip()
+    if stripped.startswith("//"):
+        return ""
+    idx = line.find("//")
+    if idx < 0:
+        return line
+    return line[:idx]

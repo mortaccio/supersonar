@@ -165,7 +165,10 @@ class GoRuleEngine:
     def _find_insecure_tls_config(self, source: str, file_path: Path) -> list[Issue]:
         issues: list[Issue] = []
         for idx, line in enumerate(source.splitlines(), start=1):
-            if INSECURE_SKIP_VERIFY_PATTERN.search(line):
+            code = _strip_go_line_comment(line).strip()
+            if not code:
+                continue
+            if INSECURE_SKIP_VERIFY_PATTERN.search(code):
                 issues.append(
                     Issue(
                         rule_id="SS407",
@@ -182,7 +185,10 @@ class GoRuleEngine:
     def _find_shell_command_execution(self, source: str, file_path: Path) -> list[Issue]:
         issues: list[Issue] = []
         for idx, line in enumerate(source.splitlines(), start=1):
-            if GO_SHELL_EXEC_PATTERN.search(line):
+            code = _strip_go_line_comment(line).strip()
+            if not code:
+                continue
+            if GO_SHELL_EXEC_PATTERN.search(code):
                 issues.append(
                     Issue(
                         rule_id="SS408",
@@ -224,3 +230,13 @@ def _collect_go_imports(lines: list[str]) -> set[str]:
         if single_match:
             imports.add(single_match.group(1))
     return imports
+
+
+def _strip_go_line_comment(line: str) -> str:
+    stripped = line.lstrip()
+    if stripped.startswith("//"):
+        return ""
+    idx = line.find("//")
+    if idx < 0:
+        return line
+    return line[:idx]

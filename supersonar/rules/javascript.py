@@ -11,7 +11,24 @@ FUNCTION_DECL_PATTERN = re.compile(r"^\s*function\s+([A-Za-z_]\w*)\s*\(([^)]*)\)
 ARROW_DECL_PATTERN = re.compile(r"^\s*(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*\(([^)]*)\)\s*=>")
 CLASS_COMPONENT_PATTERN = re.compile(r"^\s*class\s+([A-Za-z_]\w*)\s+extends\s+(?:React\.)?Component\b")
 JSX_TAG_PATTERN = re.compile(r"<[A-Za-z][A-Za-z0-9]*")
-CHILD_PROCESS_EXEC_PATTERN = re.compile(r"\b(?:child_process\.)?exec(?:Sync)?\s*\(")
+CHILD_PROCESS_REQUIRE_DESTRUCTURED_PATTERN = re.compile(
+    r"\b(?:const|let|var)\s*\{\s*([^}]+)\}\s*=\s*require\(\s*['\"]child_process['\"]\s*\)"
+)
+CHILD_PROCESS_REQUIRE_NAMESPACE_PATTERN = re.compile(
+    r"\b(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*require\(\s*['\"]child_process['\"]\s*\)"
+)
+CHILD_PROCESS_IMPORT_DESTRUCTURED_PATTERN = re.compile(
+    r"^\s*import\s*\{\s*([^}]+)\}\s*from\s*['\"]child_process['\"]"
+)
+CHILD_PROCESS_IMPORT_NAMESPACE_PATTERN = re.compile(
+    r"^\s*import\s+\*\s+as\s+([A-Za-z_]\w*)\s+from\s+['\"]child_process['\"]"
+)
+CHILD_PROCESS_IMPORT_DEFAULT_PATTERN = re.compile(
+    r"^\s*import\s+([A-Za-z_]\w*)\s+from\s+['\"]child_process['\"]"
+)
+CHILD_PROCESS_INLINE_EXEC_PATTERN = re.compile(
+    r"require\(\s*['\"]child_process['\"]\s*\)\s*\.\s*exec(?:Sync)?\s*\("
+)
 MAX_FUNCTION_PARAMS = 6
 MAX_FUNCTION_LINES = 60
 MAX_NESTING_DEPTH = 4
@@ -184,11 +201,68 @@ class JavaScriptRuleEngine:
 
     def _find_command_execution(self, source: str, file_path: Path) -> list[Issue]:
         issues: list[Issue] = []
+        direct_exec_names: set[str] = set()
+        namespace_exec_names: set[str] = {"child_process"}
+
         for idx, line in enumerate(source.splitlines(), start=1):
-            stripped = line.strip()
-            if stripped.startswith("//"):
+            code = _strip_js_line_comment(line).strip()
+            if not code:
                 continue
-            if CHILD_PROCESS_EXEC_PATTERN.search(line):
+
+            destructured_require_match = CHILD_PROCESS_REQUIRE_DESTRUCTURED_PATTERN.search(code)
+            if destructured_require_match:
+                direct_exec_names.update(_extract_child_process_exec_aliases(destructured_require_match.group(1), js_import=False))
+                continue
+
+            namespace_require_match = CHILD_PROCESS_REQUIRE_NAMESPACE_PATTERN.search(code)
+            if namespace_require_match:
+                namespace_exec_names.add(namespace_require_match.group(1))
+                continue
+
+            destructured_import_match = CHILD_PROCESS_IMPORT_DESTRUCTURED_PATTERN.search(code)
+            if destructured_import_match:
+                direct_exec_names.update(_extract_child_process_exec_aliases(destructured_import_match.group(1), js_import=True))
+                continue
+
+            namespace_import_match = CHILD_PROCESS_IMPORT_NAMESPACE_PATTERN.search(code)
+            if namespace_import_match:
+                namespace_exec_names.add(namespace_import_match.group(1))
+                continue
+
+            default_import_match = CHILD_PROCESS_IMPORT_DEFAULT_PATTERN.search(code)
+            if default_import_match:
+                namespace_exec_names.add(default_import_match.group(1))
+                continue
+
+            if CHILD_PROCESS_INLINE_EXEC_PATTERN.search(code):
+                issues.append(
+                    Issue(
+                        rule_id="SS306",
+                        title="Node.js command execution usage",
+                        severity="high",
+                        message="Review child_process exec/execSync usage for command injection risks.",
+                        file_path=str(file_path),
+                        line=idx,
+                        column=1,
+                    )
+                )
+                continue
+
+            if any(re.search(rf"\b{re.escape(name)}\s*\(", code) for name in direct_exec_names):
+                issues.append(
+                    Issue(
+                        rule_id="SS306",
+                        title="Node.js command execution usage",
+                        severity="high",
+                        message="Review child_process exec/execSync usage for command injection risks.",
+                        file_path=str(file_path),
+                        line=idx,
+                        column=1,
+                    )
+                )
+                continue
+
+            if any(re.search(rf"\b{re.escape(name)}\s*\.\s*exec(?:Sync)?\s*\(", code) for name in namespace_exec_names):
                 issues.append(
                     Issue(
                         rule_id="SS306",
@@ -208,6 +282,35 @@ def _split_params(params: str) -> list[str]:
     if not text:
         return []
     return [part.strip() for part in text.split(",") if part.strip()]
+
+
+def _extract_child_process_exec_aliases(spec: str, js_import: bool) -> set[str]:
+    names: set[str] = set()
+    for raw in spec.split(","):
+        token = raw.strip()
+        if not token:
+            continue
+        if js_import and " as " in token:
+            left, right = token.split(" as ", 1)
+            source, alias = left.strip(), right.strip()
+        elif not js_import and ":" in token:
+            left, right = token.split(":", 1)
+            source, alias = left.strip(), right.strip()
+        else:
+            source, alias = token, token
+        if source in {"exec", "execSync"} and alias:
+            names.add(alias)
+    return names
+
+
+def _strip_js_line_comment(line: str) -> str:
+    stripped = line.lstrip()
+    if stripped.startswith("//"):
+        return ""
+    idx = line.find("//")
+    if idx < 0:
+        return line
+    return line[:idx]
 
 
 def _looks_like_react_component(name: str, line: str, lines: list[str], line_idx: int) -> bool:
