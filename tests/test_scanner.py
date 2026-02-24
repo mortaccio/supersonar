@@ -206,6 +206,12 @@ class bad_class {
 
             self.assertEqual(rule_ids, {"SS004"})
 
+    def test_scan_path_raises_for_missing_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            missing = Path(tmp) / "missing-root"
+            with self.assertRaises(FileNotFoundError):
+                self._scan(str(missing), excludes=[])
+
 
 if __name__ == "__main__":
     unittest.main()

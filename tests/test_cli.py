@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from contextlib import redirect_stderr
+import io
+from pathlib import Path
+import tempfile
 import unittest
 
-from supersonar.cli import build_parser, merge_cli_with_config, validate_quality_gate_config
+from supersonar.cli import build_parser, merge_cli_with_config, run_scan, validate_quality_gate_config
 from supersonar.config import Config
 from supersonar.security import resolve_enabled_rules
 
@@ -68,6 +72,73 @@ class CLITests(unittest.TestCase):
         self.assertIn("Security scanning (backend + frontend + infra):", help_text)
         self.assertIn("supersonar scan . --security-only", help_text)
         self.assertIn("supersonar scan -h", help_text)
+
+    def test_run_scan_fails_for_missing_path(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "supersonar.toml"
+            config_path.write_text("", encoding="utf-8")
+            args = parser.parse_args(["scan", str(Path(tmp) / "does-not-exist"), "--config", str(config_path)])
+
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                exit_code = run_scan(args)
+
+        self.assertEqual(exit_code, 2)
+        self.assertIn("[scan] Path not found:", stderr.getvalue())
+
+    def test_run_scan_fails_gracefully_for_missing_coverage_xml(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "repo"
+            root.mkdir()
+            (root / "ok.py").write_text("print('ok')\n", encoding="utf-8")
+            config_path = Path(tmp) / "supersonar.toml"
+            config_path.write_text("", encoding="utf-8")
+            args = parser.parse_args(
+                [
+                    "scan",
+                    str(root),
+                    "--config",
+                    str(config_path),
+                    "--coverage-xml",
+                    str(root / "missing-coverage.xml"),
+                ]
+            )
+
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                exit_code = run_scan(args)
+
+        self.assertEqual(exit_code, 2)
+        self.assertIn("[coverage]", stderr.getvalue())
+
+    def test_run_scan_fails_gracefully_for_missing_baseline(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "repo"
+            root.mkdir()
+            (root / "ok.py").write_text("print('ok')\n", encoding="utf-8")
+            config_path = Path(tmp) / "supersonar.toml"
+            config_path.write_text("", encoding="utf-8")
+            args = parser.parse_args(
+                [
+                    "scan",
+                    str(root),
+                    "--config",
+                    str(config_path),
+                    "--baseline-report",
+                    str(root / "missing-baseline.json"),
+                    "--gate-new-only",
+                ]
+            )
+
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                exit_code = run_scan(args)
+
+        self.assertEqual(exit_code, 2)
+        self.assertIn("[baseline]", stderr.getvalue())
 
 
 if __name__ == "__main__":

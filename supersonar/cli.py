@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
+from pathlib import Path
 import sys
+import xml.etree.ElementTree as ET
 
 from supersonar import __version__
 from supersonar.baseline import filter_new_issues, load_baseline_fingerprints
@@ -111,7 +113,17 @@ def main() -> None:
 
 
 def run_scan(args: argparse.Namespace) -> int:
-    config = load_config(args.config)
+    try:
+        config = load_config(args.config)
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        print(f"[config] {exc}", file=sys.stderr)
+        return 2
+
+    target_path = Path(args.path)
+    if not target_path.exists():
+        print(f"[scan] Path not found: {target_path}", file=sys.stderr)
+        return 2
+
     merged = merge_cli_with_config(args, config)
     validation_errors = validate_quality_gate_config(merged)
     if validation_errors:
@@ -119,29 +131,52 @@ def run_scan(args: argparse.Namespace) -> int:
             print(f"[gate] {error}", file=sys.stderr)
         return 2
 
+    if merged.quality_gate.baseline_report:
+        baseline_path = Path(merged.quality_gate.baseline_report)
+        if not baseline_path.exists():
+            print(f"[baseline] Baseline report not found: {baseline_path}", file=sys.stderr)
+            return 2
+
     coverage = None
     if merged.scan.coverage_xml:
-        coverage = read_coverage_xml(merged.scan.coverage_xml)
+        try:
+            coverage = read_coverage_xml(merged.scan.coverage_xml)
+        except (FileNotFoundError, OSError, ValueError, ET.ParseError) as exc:
+            print(f"[coverage] {exc}", file=sys.stderr)
+            return 2
 
-    result = scan_path(
-        args.path,
-        excludes=merged.scan.exclude,
-        include_extensions=merged.scan.include_extensions,
-        include_filenames=merged.scan.include_filenames,
-        max_file_size_kb=merged.scan.max_file_size_kb,
-        coverage=coverage,
-        skip_generated=merged.scan.skip_generated,
-        enabled_rules=resolve_enabled_rules(merged.scan.enabled_rules, merged.scan.security_only),
-        disabled_rules=merged.scan.disabled_rules,
-        inline_ignore=merged.scan.inline_ignore,
-    )
-    report_payload = render_report(result, merged.report.output_format)
-    write_report(report_payload, merged.report.out)
+    try:
+        result = scan_path(
+            args.path,
+            excludes=merged.scan.exclude,
+            include_extensions=merged.scan.include_extensions,
+            include_filenames=merged.scan.include_filenames,
+            max_file_size_kb=merged.scan.max_file_size_kb,
+            coverage=coverage,
+            skip_generated=merged.scan.skip_generated,
+            enabled_rules=resolve_enabled_rules(merged.scan.enabled_rules, merged.scan.security_only),
+            disabled_rules=merged.scan.disabled_rules,
+            inline_ignore=merged.scan.inline_ignore,
+        )
+    except (FileNotFoundError, OSError) as exc:
+        print(f"[scan] {exc}", file=sys.stderr)
+        return 2
+
+    try:
+        report_payload = render_report(result, merged.report.output_format)
+        write_report(report_payload, merged.report.out)
+    except (OSError, ValueError) as exc:
+        print(f"[report] {exc}", file=sys.stderr)
+        return 2
     print_summary(result)
 
     gate_result = result
     if merged.quality_gate.baseline_report:
-        fingerprints = load_baseline_fingerprints(merged.quality_gate.baseline_report)
+        try:
+            fingerprints = load_baseline_fingerprints(merged.quality_gate.baseline_report)
+        except (FileNotFoundError, OSError, ValueError) as exc:
+            print(f"[baseline] {exc}", file=sys.stderr)
+            return 2
         new_result, baseline_matched = filter_new_issues(result, fingerprints)
         print(
             "[baseline] "

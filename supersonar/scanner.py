@@ -64,6 +64,8 @@ def scan_path(
     inline_ignore: bool = True,
 ) -> ScanResult:
     root_path = Path(root).resolve()
+    if not root_path.exists():
+        raise FileNotFoundError(f"Scan path not found: {root_path}")
     python_engine = PythonRuleEngine()
     java_engine = JavaRuleEngine()
     kotlin_engine = KotlinRuleEngine()

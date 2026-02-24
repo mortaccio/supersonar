@@ -16,7 +16,10 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install .
+          pip install . pytest
+      - name: Run tests
+        run: |
+          PYTHONPATH=. pytest -q
       - name: Run Supersonar
         run: |
           supersonar scan . --format json --out reports/supersonar.json --fail-on high
@@ -25,4 +28,3 @@ jobs:
         with:
           name: supersonar-report
           path: reports/supersonar.json
-
