@@ -23,6 +23,7 @@ and can enforce security quality gates in CI/CD before deployment.
 pip install .
 supersonar scan . --format json
 supersonar scan . --pretty
+supersonar scan . --pretty --progress
 ```
 
 ## Pipeline install (pip)
@@ -130,7 +131,10 @@ supersonar scan . --include-ext .java --include-ext .kt --include-file Dockerfil
 supersonar scan . --security-only
 supersonar scan . --pretty
 supersonar scan . --security-only --format json --out reports/security-report.json
+supersonar scan . --progress
 ```
+
+Progress output is written to `stderr`, enabled automatically on interactive terminals, and can be forced or disabled with `--progress` / `--no-progress`.
 
 ## Quality gates
 

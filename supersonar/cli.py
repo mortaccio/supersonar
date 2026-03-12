@@ -21,6 +21,7 @@ Quick start:
   supersonar scan . --pretty
   supersonar scan . --format json --out reports/supersonar.json
   supersonar scan . --format sarif --out reports/supersonar.sarif
+  supersonar scan . --pretty --progress
 
 Security scanning (backend + frontend + infra):
   supersonar scan . --security-only
@@ -83,6 +84,20 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--max-file-size-kb", type=int, help="Skip files larger than this size in KB.")
     scan.add_argument("--format", choices=["json", "sarif", "pretty"], help="Report output format.")
     scan.add_argument("--pretty", action="store_true", help="Shortcut for --format pretty.")
+    progress_group = scan.add_mutually_exclusive_group()
+    progress_group.add_argument(
+        "--progress",
+        dest="progress",
+        action="store_true",
+        help="Show scan progress on stderr (enabled automatically on interactive terminals).",
+    )
+    progress_group.add_argument(
+        "--no-progress",
+        dest="progress",
+        action="store_false",
+        help="Disable scan progress output.",
+    )
+    scan.set_defaults(progress=None)
     scan.add_argument("--out", help="Write report to file. Defaults to stdout.")
     scan.add_argument("--fail-on", choices=["low", "medium", "high", "critical"], help="Fail on severity level.")
     scan.add_argument("--max-issues", type=int, help="Fail if issue count exceeds this number.")
@@ -145,6 +160,7 @@ def run_scan(args: argparse.Namespace) -> int:
             print(f"[coverage] {exc}", file=sys.stderr)
             return 2
 
+    progress = ScanProgress(sys.stderr, enabled=_should_show_progress(args.progress))
     try:
         result = scan_path(
             args.path,
@@ -157,10 +173,13 @@ def run_scan(args: argparse.Namespace) -> int:
             enabled_rules=resolve_enabled_rules(merged.scan.enabled_rules, merged.scan.security_only),
             disabled_rules=merged.scan.disabled_rules,
             inline_ignore=merged.scan.inline_ignore,
+            progress_callback=progress.update if progress.enabled else None,
         )
     except (FileNotFoundError, OSError) as exc:
+        progress.finish()
         print(f"[scan] {exc}", file=sys.stderr)
         return 2
+    progress.finish()
 
     try:
         report_payload = render_report(result, merged.report.output_format)
@@ -279,6 +298,68 @@ def print_summary(result) -> None:
     if result.coverage is not None:
         line += f" coverage={result.coverage.line_rate * 100.0:.2f}%"
     print(line, file=sys.stderr)
+
+
+class ScanProgress:
+    def __init__(self, stream, enabled: bool) -> None:
+        self.stream = stream
+        self.enabled = enabled
+        self.interactive = enabled and _is_tty(stream)
+        self._rendered = False
+        self._last_width = 0
+
+    def update(self, completed: int, total: int, current_path: str) -> None:
+        if not self.enabled or total <= 0:
+            return
+
+        percent = int((completed / total) * 100)
+        if self.interactive:
+            bar_width = 24
+            filled = min(bar_width, int((completed / total) * bar_width))
+            bar = f"[{'#' * filled}{'.' * (bar_width - filled)}]"
+            label = _truncate_progress_path(current_path, limit=48)
+            line = f"\r[progress] {bar} {completed}/{total} {percent:3d}% {label}"
+            if len(line) < self._last_width:
+                line += " " * (self._last_width - len(line))
+            self._last_width = len(line)
+            self.stream.write(line)
+        else:
+            self.stream.write(f"[progress] {completed}/{total} {percent:3d}% {current_path}\n")
+        self.stream.flush()
+        self._rendered = True
+
+    def finish(self) -> None:
+        if not self.enabled or not self._rendered:
+            return
+        if self.interactive:
+            self.stream.write("\n")
+            self.stream.flush()
+        self._rendered = False
+        self._last_width = 0
+
+
+def _should_show_progress(progress_flag: bool | None) -> bool:
+    if progress_flag is not None:
+        return progress_flag
+    return _is_tty(sys.stderr)
+
+
+def _is_tty(stream) -> bool:
+    isatty = getattr(stream, "isatty", None)
+    if isatty is None:
+        return False
+    try:
+        return bool(isatty())
+    except OSError:
+        return False
+
+
+def _truncate_progress_path(path: str, limit: int) -> str:
+    if len(path) <= limit:
+        return path
+    if limit <= 3:
+        return path[:limit]
+    return f"...{path[-(limit - 3):]}"
 
 
 def validate_quality_gate_config(config: Config) -> list[str]:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 import os
 from pathlib import Path
 import re
@@ -30,6 +31,7 @@ GENERATED_FILE_SUFFIXES = {
     ".min.js",
     ".map",
 }
+ProgressCallback = Callable[[int, int, str], None]
 
 
 def _should_exclude(path: Path, excludes: list[str]) -> bool:
@@ -62,6 +64,7 @@ def scan_path(
     enabled_rules: list[str] | None = None,
     disabled_rules: list[str] | None = None,
     inline_ignore: bool = True,
+    progress_callback: ProgressCallback | None = None,
 ) -> ScanResult:
     root_path = Path(root).resolve()
     if not root_path.exists():
@@ -79,32 +82,29 @@ def scan_path(
     enabled_rule_set = set(enabled_rules) if enabled_rules else None
     disabled_rule_set = set(disabled_rules or [])
     inline_ignore_cache: dict[str, dict[int, set[str]]] = {}
+    scan_targets = _collect_scan_targets(
+        root_path=root_path,
+        excludes=excludes,
+        include_extensions=include_ext_set,
+        include_filenames=include_name_set,
+        max_file_size_kb=max_file_size_kb,
+        skip_generated=skip_generated,
+    )
+    root_is_file = root_path.is_file()
 
-    if root_path.is_file():
-        file_candidates = [root_path]
-    else:
-        file_candidates = []
-
-    for file_path in file_candidates:
-        if skip_generated and _is_generated_path(file_path):
-            continue
-        if not _has_allowed_target(file_path, include_ext_set, include_name_set, max_file_size_kb):
-            continue
+    for index, file_path in enumerate(scan_targets, start=1):
+        normalized_file_path = file_path.name if root_is_file else _relative_path(file_path, root_path)
         files_scanned += 1
         try:
-            suffix = file_path.suffix.lower()
-            if suffix == ".py":
-                file_issues = python_engine.run(file_path)
-            elif suffix == ".java":
-                file_issues = java_engine.run(file_path)
-            elif suffix == ".kt":
-                file_issues = kotlin_engine.run(file_path)
-            elif suffix in {".js", ".jsx", ".ts", ".tsx"}:
-                file_issues = javascript_engine.run(file_path)
-            elif suffix == ".go":
-                file_issues = go_engine.run(file_path)
-            else:
-                file_issues = generic_engine.run(file_path)
+            file_issues = _run_file_rules(
+                file_path=file_path,
+                python_engine=python_engine,
+                java_engine=java_engine,
+                kotlin_engine=kotlin_engine,
+                javascript_engine=javascript_engine,
+                go_engine=go_engine,
+                generic_engine=generic_engine,
+            )
         except OSError as exc:
             issues.append(
                 Issue(
@@ -112,7 +112,7 @@ def scan_path(
                     title="File scan error",
                     severity="medium",
                     message=f"Unable to read file during scan: {exc}",
-                    file_path=file_path.name,
+                    file_path=normalized_file_path,
                     line=1,
                     column=1,
                 )
@@ -121,7 +121,7 @@ def scan_path(
 
         filtered = _filter_issues(
             file_issues=file_issues,
-            normalized_file_path=file_path.name,
+            normalized_file_path=normalized_file_path,
             enabled_rules=enabled_rule_set,
             disabled_rules=disabled_rule_set,
             inline_ignore=inline_ignore,
@@ -129,7 +129,29 @@ def scan_path(
             source_file_path=file_path,
         )
         issues.extend(filtered)
+        if progress_callback is not None:
+            progress_callback(index, len(scan_targets), normalized_file_path)
 
+    deduped = _dedupe_issues(issues)
+    return ScanResult(issues=deduped, files_scanned=files_scanned, coverage=coverage)
+
+
+def _collect_scan_targets(
+    root_path: Path,
+    excludes: list[str],
+    include_extensions: set[str],
+    include_filenames: set[str],
+    max_file_size_kb: int,
+    skip_generated: bool,
+) -> list[Path]:
+    if root_path.is_file():
+        if skip_generated and _is_generated_path(root_path):
+            return []
+        if not _has_allowed_target(root_path, include_extensions, include_filenames, max_file_size_kb):
+            return []
+        return [root_path]
+
+    scan_targets: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(root_path, topdown=True, followlinks=False):
         dir_path = Path(dirpath)
         dirnames[:] = sorted(
@@ -144,51 +166,33 @@ def scan_path(
                 continue
             if skip_generated and _is_generated_path(file_path):
                 continue
-            if not _has_allowed_target(file_path, include_ext_set, include_name_set, max_file_size_kb):
+            if not _has_allowed_target(file_path, include_extensions, include_filenames, max_file_size_kb):
                 continue
-            files_scanned += 1
-            try:
-                suffix = file_path.suffix.lower()
-                if suffix == ".py":
-                    file_issues = python_engine.run(file_path)
-                elif suffix == ".java":
-                    file_issues = java_engine.run(file_path)
-                elif suffix == ".kt":
-                    file_issues = kotlin_engine.run(file_path)
-                elif suffix in {".js", ".jsx", ".ts", ".tsx"}:
-                    file_issues = javascript_engine.run(file_path)
-                elif suffix == ".go":
-                    file_issues = go_engine.run(file_path)
-                else:
-                    file_issues = generic_engine.run(file_path)
-            except OSError as exc:
-                relative = _relative_path(file_path, root_path)
-                issues.append(
-                    Issue(
-                        rule_id="SS900",
-                        title="File scan error",
-                        severity="medium",
-                        message=f"Unable to read file during scan: {exc}",
-                        file_path=relative,
-                        line=1,
-                        column=1,
-                    )
-                )
-                continue
+            scan_targets.append(file_path)
+    return scan_targets
 
-            filtered = _filter_issues(
-                file_issues=file_issues,
-                normalized_file_path=_relative_path(Path(file_path), root_path),
-                enabled_rules=enabled_rule_set,
-                disabled_rules=disabled_rule_set,
-                inline_ignore=inline_ignore,
-                inline_ignore_cache=inline_ignore_cache,
-                source_file_path=file_path,
-            )
-            issues.extend(filtered)
 
-    deduped = _dedupe_issues(issues)
-    return ScanResult(issues=deduped, files_scanned=files_scanned, coverage=coverage)
+def _run_file_rules(
+    file_path: Path,
+    python_engine: PythonRuleEngine,
+    java_engine: JavaRuleEngine,
+    kotlin_engine: KotlinRuleEngine,
+    javascript_engine: JavaScriptRuleEngine,
+    go_engine: GoRuleEngine,
+    generic_engine: GenericRuleEngine,
+) -> list[Issue]:
+    suffix = file_path.suffix.lower()
+    if suffix == ".py":
+        return python_engine.run(file_path)
+    if suffix == ".java":
+        return java_engine.run(file_path)
+    if suffix == ".kt":
+        return kotlin_engine.run(file_path)
+    if suffix in {".js", ".jsx", ".ts", ".tsx"}:
+        return javascript_engine.run(file_path)
+    if suffix == ".go":
+        return go_engine.run(file_path)
+    return generic_engine.run(file_path)
 
 
 def _relative_path(path: Path, root: Path) -> str:

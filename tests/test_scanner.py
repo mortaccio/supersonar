@@ -212,6 +212,25 @@ class bad_class {
             with self.assertRaises(FileNotFoundError):
                 self._scan(str(missing), excludes=[])
 
+    def test_progress_callback_reports_scanned_files_in_order(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "a.py").write_text("print('a')\n", encoding="utf-8")
+            (root / "b.py").write_text("print('b')\n", encoding="utf-8")
+            progress_events: list[tuple[int, int, str]] = []
+
+            scan_path(
+                str(root),
+                excludes=[],
+                include_extensions=[".py"],
+                include_filenames=[],
+                max_file_size_kb=1024,
+                skip_generated=True,
+                progress_callback=lambda current, total, path: progress_events.append((current, total, path)),
+            )
+
+        self.assertEqual(progress_events, [(1, 2, "a.py"), (2, 2, "b.py")])
+
 
 if __name__ == "__main__":
     unittest.main()

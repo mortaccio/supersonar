@@ -140,6 +140,66 @@ class CLITests(unittest.TestCase):
         self.assertEqual(exit_code, 2)
         self.assertIn("[baseline]", stderr.getvalue())
 
+    def test_run_scan_emits_progress_when_forced(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "repo"
+            root.mkdir()
+            (root / "a.py").write_text("print('a')\n", encoding="utf-8")
+            (root / "b.py").write_text("print('b')\n", encoding="utf-8")
+            report_path = Path(tmp) / "report.json"
+            config_path = Path(tmp) / "supersonar.toml"
+            config_path.write_text("", encoding="utf-8")
+            args = parser.parse_args(
+                [
+                    "scan",
+                    str(root),
+                    "--config",
+                    str(config_path),
+                    "--format",
+                    "json",
+                    "--out",
+                    str(report_path),
+                    "--progress",
+                ]
+            )
+
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                exit_code = run_scan(args)
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("[progress] 2/2 100%", stderr.getvalue())
+
+    def test_run_scan_skips_progress_by_default_when_stderr_is_not_tty(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "repo"
+            root.mkdir()
+            (root / "a.py").write_text("print('a')\n", encoding="utf-8")
+            report_path = Path(tmp) / "report.json"
+            config_path = Path(tmp) / "supersonar.toml"
+            config_path.write_text("", encoding="utf-8")
+            args = parser.parse_args(
+                [
+                    "scan",
+                    str(root),
+                    "--config",
+                    str(config_path),
+                    "--format",
+                    "json",
+                    "--out",
+                    str(report_path),
+                ]
+            )
+
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                exit_code = run_scan(args)
+
+        self.assertEqual(exit_code, 0)
+        self.assertNotIn("[progress]", stderr.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()
