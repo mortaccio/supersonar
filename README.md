@@ -204,3 +204,7 @@ coverage xml -o coverage.xml
 - Rule-level controls:
   - `--disable-rule SS004` (repeatable)
   - `--enable-rule SS001 --enable-rule SS003` (allowlist mode)
+
+python3 -m pip install ".[semgrep]"
+supersonar scan . --engine hybrid --semgrep-config p/default --format sarif --out reports/security.sarif
+
