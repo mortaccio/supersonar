@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from supersonar.models import Issue, ScanResult
-from supersonar.security import SECURITY_RULE_IDS
+from supersonar.security import is_security_rule
 
 
 def _issue_to_dict(issue: Issue) -> dict[str, Any]:
@@ -25,7 +25,7 @@ def to_json_report(result: ScanResult) -> dict[str, Any]:
     counts = Counter(issue.severity for issue in result.issues)
     rule_counts = Counter(issue.rule_id for issue in result.issues)
     files_with_issues = len({issue.file_path for issue in result.issues})
-    security_issues = [issue for issue in result.issues if issue.rule_id in SECURITY_RULE_IDS]
+    security_issues = [issue for issue in result.issues if is_security_rule(issue.rule_id)]
     security_counts = Counter(issue.severity for issue in security_issues)
     security_rule_counts = Counter(issue.rule_id for issue in security_issues)
     security_file_counts = Counter(issue.file_path for issue in security_issues)
@@ -116,7 +116,7 @@ def to_pretty_report(result: ScanResult) -> str:
         f"high={counts.get('high', 0)} critical={counts.get('critical', 0)}"
     )
 
-    security_issues = [issue for issue in result.issues if issue.rule_id in SECURITY_RULE_IDS]
+    security_issues = [issue for issue in result.issues if is_security_rule(issue.rule_id)]
     security_counts = Counter(issue.severity for issue in security_issues)
     lines.append(
         "Security: "

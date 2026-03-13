@@ -7,8 +7,10 @@ import re
 
 from supersonar.models import CoverageData, Issue, ScanResult
 from supersonar.rules import GoRuleEngine, GenericRuleEngine, JavaRuleEngine, JavaScriptRuleEngine, KotlinRuleEngine, PythonRuleEngine
+from supersonar.security import resolve_enabled_rules
+from supersonar.semgrep import run_semgrep_scan
 
-INLINE_IGNORE_PATTERN = re.compile(r"supersonar:ignore(?:\s+([A-Za-z0-9_, -]+))?", re.IGNORECASE)
+INLINE_IGNORE_PATTERN = re.compile(r"supersonar:ignore(?:\s+(.+))?", re.IGNORECASE)
 GENERATED_DIR_NAMES = {
     "target",
     ".mypy_cache",
@@ -32,6 +34,7 @@ GENERATED_FILE_SUFFIXES = {
     ".map",
 }
 ProgressCallback = Callable[[int, int, str], None]
+SUPPORTED_SCAN_ENGINES = {"internal", "semgrep", "hybrid"}
 
 
 def _should_exclude(path: Path, excludes: list[str]) -> bool:
@@ -65,22 +68,26 @@ def scan_path(
     disabled_rules: list[str] | None = None,
     inline_ignore: bool = True,
     progress_callback: ProgressCallback | None = None,
+    security_only: bool = False,
+    engine: str = "internal",
+    semgrep_binary: str = "semgrep",
+    semgrep_configs: list[str] | None = None,
 ) -> ScanResult:
     root_path = Path(root).resolve()
     if not root_path.exists():
         raise FileNotFoundError(f"Scan path not found: {root_path}")
-    python_engine = PythonRuleEngine()
-    java_engine = JavaRuleEngine()
-    kotlin_engine = KotlinRuleEngine()
-    javascript_engine = JavaScriptRuleEngine()
-    go_engine = GoRuleEngine()
-    generic_engine = GenericRuleEngine()
+    engine_name = engine.lower()
+    if engine_name not in SUPPORTED_SCAN_ENGINES:
+        allowed = ", ".join(sorted(SUPPORTED_SCAN_ENGINES))
+        raise ValueError(f"Unsupported scan engine: {engine}. Expected one of: {allowed}")
+
     issues: list[Issue] = []
-    files_scanned = 0
     include_ext_set = {ext.lower() if ext.startswith(".") else f".{ext.lower()}" for ext in include_extensions}
     include_name_set = set(include_filenames)
-    enabled_rule_set = set(enabled_rules) if enabled_rules else None
-    disabled_rule_set = set(disabled_rules or [])
+    user_enabled_rule_set = {rule.upper() for rule in enabled_rules} if enabled_rules else None
+    internal_enabled_rules = resolve_enabled_rules(enabled_rules, security_only)
+    internal_enabled_rule_set = {rule.upper() for rule in internal_enabled_rules} if internal_enabled_rules else None
+    disabled_rule_set = {rule.upper() for rule in (disabled_rules or [])}
     inline_ignore_cache: dict[str, dict[int, set[str]]] = {}
     scan_targets = _collect_scan_targets(
         root_path=root_path,
@@ -91,46 +98,81 @@ def scan_path(
         skip_generated=skip_generated,
     )
     root_is_file = root_path.is_file()
+    files_scanned = len(scan_targets)
 
-    for index, file_path in enumerate(scan_targets, start=1):
-        normalized_file_path = file_path.name if root_is_file else _relative_path(file_path, root_path)
-        files_scanned += 1
-        try:
-            file_issues = _run_file_rules(
-                file_path=file_path,
-                python_engine=python_engine,
-                java_engine=java_engine,
-                kotlin_engine=kotlin_engine,
-                javascript_engine=javascript_engine,
-                go_engine=go_engine,
-                generic_engine=generic_engine,
-            )
-        except OSError as exc:
-            issues.append(
-                Issue(
-                    rule_id="SS900",
-                    title="File scan error",
-                    severity="medium",
-                    message=f"Unable to read file during scan: {exc}",
-                    file_path=normalized_file_path,
-                    line=1,
-                    column=1,
+    if engine_name in {"internal", "hybrid"}:
+        python_engine = PythonRuleEngine()
+        java_engine = JavaRuleEngine()
+        kotlin_engine = KotlinRuleEngine()
+        javascript_engine = JavaScriptRuleEngine()
+        go_engine = GoRuleEngine()
+        generic_engine = GenericRuleEngine()
+
+        for index, file_path in enumerate(scan_targets, start=1):
+            normalized_file_path = file_path.name if root_is_file else _relative_path(file_path, root_path)
+            try:
+                file_issues = _run_file_rules(
+                    file_path=file_path,
+                    python_engine=python_engine,
+                    java_engine=java_engine,
+                    kotlin_engine=kotlin_engine,
+                    javascript_engine=javascript_engine,
+                    go_engine=go_engine,
+                    generic_engine=generic_engine,
                 )
-            )
-            file_issues = []
+            except OSError as exc:
+                issues.append(
+                    Issue(
+                        rule_id="SS900",
+                        title="File scan error",
+                        severity="medium",
+                        message=f"Unable to read file during scan: {exc}",
+                        file_path=normalized_file_path,
+                        line=1,
+                        column=1,
+                    )
+                )
+                file_issues = []
 
-        filtered = _filter_issues(
-            file_issues=file_issues,
-            normalized_file_path=normalized_file_path,
-            enabled_rules=enabled_rule_set,
-            disabled_rules=disabled_rule_set,
-            inline_ignore=inline_ignore,
-            inline_ignore_cache=inline_ignore_cache,
-            source_file_path=file_path,
+            filtered = _filter_issues(
+                file_issues=file_issues,
+                normalized_file_path=normalized_file_path,
+                enabled_rules=internal_enabled_rule_set,
+                disabled_rules=disabled_rule_set,
+                inline_ignore=inline_ignore,
+                inline_ignore_cache=inline_ignore_cache,
+                source_file_path=file_path,
+            )
+            issues.extend(filtered)
+            if progress_callback is not None:
+                progress_callback(index, len(scan_targets), normalized_file_path)
+
+    if engine_name in {"semgrep", "hybrid"}:
+        semgrep_issues = run_semgrep_scan(
+            root_path=root_path,
+            excludes=excludes,
+            semgrep_binary=semgrep_binary,
+            semgrep_configs=semgrep_configs,
         )
-        issues.extend(filtered)
-        if progress_callback is not None:
-            progress_callback(index, len(scan_targets), normalized_file_path)
+        normalized_semgrep_paths: set[str] = set()
+        for source_file_path, file_issues in _group_issues_by_source_path(semgrep_issues).items():
+            normalized_file_path = source_file_path.name if root_is_file else _relative_path(source_file_path, root_path)
+            filtered = _filter_issues(
+                file_issues=file_issues,
+                normalized_file_path=normalized_file_path,
+                enabled_rules=user_enabled_rule_set,
+                disabled_rules=disabled_rule_set,
+                inline_ignore=inline_ignore,
+                inline_ignore_cache=inline_ignore_cache,
+                source_file_path=source_file_path,
+            )
+            if filtered:
+                normalized_semgrep_paths.add(normalized_file_path)
+            issues.extend(filtered)
+
+        files_scanned = max(files_scanned, len(normalized_semgrep_paths))
+        if root_is_file and not (skip_generated and _is_generated_path(root_path)):
+            files_scanned = max(files_scanned, 1)
 
     deduped = _dedupe_issues(issues)
     return ScanResult(issues=deduped, files_scanned=files_scanned, coverage=coverage)
@@ -210,6 +252,13 @@ def _dedupe_issues(issues: list[Issue]) -> list[Issue]:
     return sorted(unique.values(), key=lambda issue: (issue.file_path, issue.line, issue.column, issue.rule_id))
 
 
+def _group_issues_by_source_path(issues: list[Issue]) -> dict[Path, list[Issue]]:
+    grouped: dict[Path, list[Issue]] = {}
+    for issue in issues:
+        grouped.setdefault(Path(issue.file_path), []).append(issue)
+    return grouped
+
+
 def _is_generated_path(path: Path) -> bool:
     if any(part in GENERATED_DIR_NAMES for part in path.parts):
         return True
@@ -237,12 +286,12 @@ def _filter_issues(
 
     for issue in file_issues:
         issue.file_path = normalized_file_path
-        if issue.rule_id in disabled_rules:
+        if _rule_matches_selectors(issue.rule_id, disabled_rules):
             continue
-        if enabled_rules is not None and issue.rule_id not in enabled_rules:
+        if enabled_rules is not None and not _rule_matches_selectors(issue.rule_id, enabled_rules):
             continue
         ignored_rules = inline_map.get(issue.line)
-        if ignored_rules is not None and ("*" in ignored_rules or issue.rule_id in ignored_rules):
+        if ignored_rules is not None and ("*" in ignored_rules or _rule_matches_selectors(issue.rule_id, ignored_rules)):
             continue
         allowed.append(issue)
     return allowed
@@ -275,3 +324,14 @@ def _get_inline_ignore_map(
 
     inline_ignore_cache[key] = rule_map
     return rule_map
+
+
+def _rule_matches_selectors(rule_id: str, selectors: set[str]) -> bool:
+    normalized_rule_id = rule_id.upper()
+    if normalized_rule_id in selectors:
+        return True
+    if normalized_rule_id.startswith("SG:") and normalized_rule_id[3:] in selectors:
+        return True
+    if f"SG:{normalized_rule_id}" in selectors:
+        return True
+    return False

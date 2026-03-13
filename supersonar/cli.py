@@ -13,7 +13,6 @@ from supersonar.coverage import read_coverage_xml
 from supersonar.quality_gate import evaluate_gate
 from supersonar.reporters import to_json_report, to_pretty_report, to_sarif_report, write_report
 from supersonar.scanner import scan_path
-from supersonar.security import resolve_enabled_rules
 
 TOP_LEVEL_MANUAL = """\
 Quick start:
@@ -26,6 +25,8 @@ Quick start:
 Security scanning (backend + frontend + infra):
   supersonar scan . --security-only
   supersonar scan . --security-only --format json --out reports/security-report.json
+  supersonar scan . --engine semgrep --semgrep-config p/default
+  supersonar scan . --engine hybrid --security-only --semgrep-config p/default
 
 CI/CD quality gates:
   supersonar scan . --security-only --max-high 0 --max-critical 0
@@ -74,6 +75,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--security-only",
         action="store_true",
         help="Enable only security-focused rules (reduces quality/style noise).",
+    )
+    scan.add_argument(
+        "--engine",
+        choices=["internal", "semgrep", "hybrid"],
+        help="Scan engine: built-in rules, Semgrep, or both.",
+    )
+    scan.add_argument("--semgrep-bin", help="Path or executable name for Semgrep when engine includes semgrep.")
+    scan.add_argument(
+        "--semgrep-config",
+        action="append",
+        default=[],
+        help="Semgrep config or ruleset (repeatable), for example p/default.",
     )
     scan.add_argument("--no-inline-ignore", action="store_true", help="Disable inline suppression comments.")
     scan.add_argument(
@@ -170,12 +183,16 @@ def run_scan(args: argparse.Namespace) -> int:
             max_file_size_kb=merged.scan.max_file_size_kb,
             coverage=coverage,
             skip_generated=merged.scan.skip_generated,
-            enabled_rules=resolve_enabled_rules(merged.scan.enabled_rules, merged.scan.security_only),
+            enabled_rules=merged.scan.enabled_rules,
             disabled_rules=merged.scan.disabled_rules,
             inline_ignore=merged.scan.inline_ignore,
             progress_callback=progress.update if progress.enabled else None,
+            security_only=merged.scan.security_only,
+            engine=merged.scan.engine,
+            semgrep_binary=merged.scan.semgrep_binary,
+            semgrep_configs=merged.scan.semgrep_configs,
         )
-    except (FileNotFoundError, OSError) as exc:
+    except (FileNotFoundError, OSError, ValueError) as exc:
         progress.finish()
         print(f"[scan] {exc}", file=sys.stderr)
         return 2
@@ -243,6 +260,12 @@ def merge_cli_with_config(args: argparse.Namespace, config: Config) -> Config:
         merged.scan.inline_ignore = False
     if args.security_only:
         merged.scan.security_only = True
+    if args.engine:
+        merged.scan.engine = args.engine
+    if args.semgrep_bin:
+        merged.scan.semgrep_binary = args.semgrep_bin
+    if args.semgrep_config:
+        merged.scan.semgrep_configs = list(dict.fromkeys([*merged.scan.semgrep_configs, *args.semgrep_config]))
     if args.include_generated:
         merged.scan.skip_generated = False
     if args.max_file_size_kb is not None:
@@ -391,6 +414,8 @@ def validate_quality_gate_config(config: Config) -> list[str]:
         errors.append("only_new_issues requires baseline_report")
     if config.scan.enabled_rules is not None and len(config.scan.enabled_rules) == 0:
         errors.append("enabled_rules must be non-empty when set")
+    if config.scan.engine not in {"internal", "semgrep", "hybrid"}:
+        errors.append("scan.engine must be one of: internal, semgrep, hybrid")
 
     return errors
 

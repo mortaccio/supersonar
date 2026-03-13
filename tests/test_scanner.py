@@ -3,7 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
+from supersonar.models import Issue
 from supersonar.scanner import scan_path
 
 
@@ -16,6 +18,9 @@ class ScannerTests(unittest.TestCase):
         enabled_rules: list[str] | None = None,
         disabled_rules: list[str] | None = None,
         inline_ignore: bool = True,
+        security_only: bool = False,
+        engine: str = "internal",
+        semgrep_configs: list[str] | None = None,
     ):
         return scan_path(
             root,
@@ -27,6 +32,9 @@ class ScannerTests(unittest.TestCase):
             enabled_rules=enabled_rules,
             disabled_rules=disabled_rules,
             inline_ignore=inline_ignore,
+            security_only=security_only,
+            engine=engine,
+            semgrep_configs=semgrep_configs,
         )
 
     def test_detects_eval_issue(self) -> None:
@@ -230,6 +238,36 @@ class bad_class {
             )
 
         self.assertEqual(progress_events, [(1, 2, "a.py"), (2, 2, "b.py")])
+
+    @mock.patch("supersonar.scanner.run_semgrep_scan")
+    def test_semgrep_engine_detects_external_findings(self, run_semgrep_scan_mock: mock.Mock) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            sample = root / "sample.py"
+            sample.write_text("dangerous_call()\n", encoding="utf-8")
+            run_semgrep_scan_mock.return_value = [
+                Issue("SG:python.lang.security.audit.fake", "Semgrep rule", "high", "External finding", str(sample), 1, 1)
+            ]
+
+            result = self._scan(str(root), excludes=[], engine="semgrep", semgrep_configs=["p/default"])
+
+        rule_ids = {issue.rule_id for issue in result.issues}
+        self.assertEqual(rule_ids, {"SG:python.lang.security.audit.fake"})
+        self.assertEqual(result.files_scanned, 1)
+
+    @mock.patch("supersonar.scanner.run_semgrep_scan")
+    def test_inline_ignore_comment_suppresses_semgrep_issue(self, run_semgrep_scan_mock: mock.Mock) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            sample = root / "sample.py"
+            sample.write_text("dangerous_call()  # supersonar:ignore SG:python.lang.security.audit.fake\n", encoding="utf-8")
+            run_semgrep_scan_mock.return_value = [
+                Issue("SG:python.lang.security.audit.fake", "Semgrep rule", "high", "External finding", str(sample), 1, 1)
+            ]
+
+            result = self._scan(str(root), excludes=[], engine="semgrep")
+
+        self.assertEqual(result.issues, [])
 
 
 if __name__ == "__main__":

@@ -39,6 +39,13 @@ class CLITests(unittest.TestCase):
         errors = validate_quality_gate_config(config)
         self.assertTrue(any("only_new_issues" in error for error in errors))
 
+    def test_validates_invalid_scan_engine(self) -> None:
+        config = Config()
+        config.scan.engine = "broken"
+
+        errors = validate_quality_gate_config(config)
+        self.assertTrue(any("scan.engine" in error for error in errors))
+
     def test_security_only_flag_enables_security_mode(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["scan", ".", "--security-only"])
@@ -50,6 +57,28 @@ class CLITests(unittest.TestCase):
         args = parser.parse_args(["scan", ".", "--pretty"])
         merged = merge_cli_with_config(args, Config())
         self.assertEqual(merged.report.output_format, "pretty")
+
+    def test_semgrep_flags_merge_into_config(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "scan",
+                ".",
+                "--engine",
+                "hybrid",
+                "--semgrep-bin",
+                "/opt/semgrep/bin/semgrep",
+                "--semgrep-config",
+                "p/default",
+                "--semgrep-config",
+                "p/security-audit",
+            ]
+        )
+        merged = merge_cli_with_config(args, Config())
+
+        self.assertEqual(merged.scan.engine, "hybrid")
+        self.assertEqual(merged.scan.semgrep_binary, "/opt/semgrep/bin/semgrep")
+        self.assertEqual(merged.scan.semgrep_configs, ["p/default", "p/security-audit"])
 
     def test_security_only_filters_enabled_rules(self) -> None:
         resolved = resolve_enabled_rules(["SS004", "SS001", "SS007"], security_only=True)

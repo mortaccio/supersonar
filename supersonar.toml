@@ -6,6 +6,9 @@ max_file_size_kb = 1024
 skip_generated = true
 inline_ignore = true
 security_only = false
+engine = "internal"
+semgrep_binary = "semgrep"
+semgrep_configs = ["p/default"]
 disabled_rules = []
 
 [quality_gate]

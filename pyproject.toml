@@ -20,6 +20,9 @@ classifiers = [
   "Environment :: Console",
 ]
 
+[project.optional-dependencies]
+semgrep = ["semgrep"]
+
 [project.urls]
 Homepage = "https://github.com/mortaccio/supersonar"
 Repository = "https://github.com/mortaccio/supersonar"

@@ -24,6 +24,12 @@ SECURITY_RULE_IDS: set[str] = {
     "SS408",  # Go shell command execution
     "SS507",  # Kotlin command execution
 }
+SEMGREP_RULE_PREFIX = "SG:"
+
+
+def is_security_rule(rule_id: str) -> bool:
+    normalized = rule_id.upper()
+    return normalized in SECURITY_RULE_IDS or normalized.startswith(SEMGREP_RULE_PREFIX)
 
 
 def resolve_enabled_rules(
@@ -34,5 +40,5 @@ def resolve_enabled_rules(
         return enabled_rules
     if enabled_rules is None:
         return sorted(SECURITY_RULE_IDS)
-    filtered = [rule for rule in enabled_rules if rule in SECURITY_RULE_IDS]
+    filtered = [rule for rule in enabled_rules if is_security_rule(rule)]
     return list(dict.fromkeys(filtered))

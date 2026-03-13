@@ -26,6 +26,13 @@ supersonar scan . --pretty
 supersonar scan . --pretty --progress
 ```
 
+For stronger vulnerability scanning, install the optional Semgrep integration and switch engines:
+
+```bash
+python -m pip install ".[semgrep]"
+supersonar scan . --engine semgrep --semgrep-config p/default --format sarif --out reports/security.sarif
+```
+
 ## Pipeline install (pip)
 
 Use an isolated environment in CI:
@@ -45,7 +52,19 @@ Or install from repository source directly:
 python -m pip install "git+https://github.com/mortaccio/supersonar.git@main"
 ```
 
-The scanner performs real code checks (AST + regex), including:
+## Scan Engines
+
+`supersonar` now supports three scan engines:
+
+- `internal`: the built-in AST/regex rules already in this repository. Fast and self-contained, but still heuristic.
+- `semgrep`: runs Semgrep and converts findings into the native `supersonar` report, SARIF, and quality gate flow.
+- `hybrid`: combines the built-in rules with Semgrep findings in one result set.
+
+If your goal is to find real security issues in code, prefer `--engine semgrep` or `--engine hybrid`.
+The built-in engine is useful for lightweight local checks, but it is not a replacement for a mature SAST rule set.
+Treat `p/default` as a starting point. For production use, point `--semgrep-config` to the rulesets or custom policies that match your stack and threat model.
+
+The built-in engine performs code checks (AST + regex), including:
 - dynamic execution (`eval`/`exec`)
 - broad exception handlers
 - `subprocess.*(..., shell=True)` in Python
@@ -95,6 +114,22 @@ supersonar scan . \
   --min-coverage 80
 ```
 
+For vulnerability-focused CI, prefer the Semgrep-backed engine:
+
+```bash
+python -m pip install "supersonar[semgrep]"
+supersonar scan . \
+  --engine semgrep \
+  --semgrep-config p/default \
+  --format sarif \
+  --out reports/security.sarif \
+  --fail-on high \
+  --max-high 0 \
+  --max-critical 0
+```
+
+If `semgrep` is installed outside your active `PATH`, pass it explicitly with `--semgrep-bin /path/to/semgrep`.
+
 ## Config (`supersonar.toml`)
 
 ```toml
@@ -106,6 +141,9 @@ max_file_size_kb = 1024
 skip_generated = true
 inline_ignore = true
 security_only = false
+engine = "internal"
+semgrep_binary = "semgrep"
+semgrep_configs = ["p/default"]
 disabled_rules = []
 # enabled_rules = ["SS001", "SS003"]
 coverage_xml = "coverage.xml"
@@ -129,6 +167,8 @@ Use CLI overrides when needed:
 ```bash
 supersonar scan . --include-ext .java --include-ext .kt --include-file Dockerfile
 supersonar scan . --security-only
+supersonar scan . --engine semgrep --semgrep-config p/default
+supersonar scan . --engine hybrid --security-only --semgrep-config p/default
 supersonar scan . --pretty
 supersonar scan . --security-only --format json --out reports/security-report.json
 supersonar scan . --progress
@@ -160,6 +200,7 @@ coverage xml -o coverage.xml
 - Inline suppression is supported per line:
   - `# supersonar:ignore` ignores all rules on that line.
   - `# supersonar:ignore SS001,SS007` ignores specific rules on that line.
+  - `# supersonar:ignore SG:python.lang.security.audit.x` also works for Semgrep-backed findings.
 - Rule-level controls:
   - `--disable-rule SS004` (repeatable)
   - `--enable-rule SS001 --enable-rule SS003` (allowlist mode)

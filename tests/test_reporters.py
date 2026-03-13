@@ -31,6 +31,7 @@ class ReporterTests(unittest.TestCase):
                 Issue("SS001", "x", "critical", "m", "backend/app.py", 1, 1),
                 Issue("SS110", "x", "high", "m", "Dockerfile", 2, 1),
                 Issue("SS111", "x", "critical", "m", "k8s/deploy.yaml", 10, 1),
+                Issue("SG:python.django.security.audit.x", "x", "high", "m", "api/views.py", 12, 2),
                 Issue("SS004", "x", "low", "m", "frontend/a.js", 4, 1),
             ],
         )
@@ -38,13 +39,14 @@ class ReporterTests(unittest.TestCase):
         payload = to_json_report(result)
         summary = payload["security_summary"]
 
-        self.assertEqual(summary["issues_total"], 3)
-        self.assertEqual(summary["files_with_issues"], 3)
+        self.assertEqual(summary["issues_total"], 4)
+        self.assertEqual(summary["files_with_issues"], 4)
         self.assertEqual(summary["severity_counts"]["critical"], 2)
-        self.assertEqual(summary["severity_counts"]["high"], 1)
+        self.assertEqual(summary["severity_counts"]["high"], 2)
         self.assertEqual(summary["rule_counts"]["SS001"], 1)
         self.assertEqual(summary["rule_counts"]["SS110"], 1)
-        self.assertEqual(summary["language_counts"]["python"], 1)
+        self.assertEqual(summary["rule_counts"]["SG:python.django.security.audit.x"], 1)
+        self.assertEqual(summary["language_counts"]["python"], 2)
         self.assertEqual(summary["language_counts"]["dockerfile"], 1)
         self.assertEqual(summary["language_counts"]["yaml"], 1)
 
